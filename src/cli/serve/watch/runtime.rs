@@ -16,6 +16,7 @@ use super::strategy::{
 pub(in crate::cli::serve) fn watch_paths<P: AsRef<Utf8Path>, F>(
     watched_paths: &[P],
     assets_dir: &Utf8Path,
+    quiet: bool,
     mut action: F,
 ) -> eyre::Result<()>
 where
@@ -25,6 +26,7 @@ where
         watched_paths,
         assets_dir,
         default_watch_strategy(),
+        quiet,
         &mut action,
     )
 }
@@ -33,6 +35,7 @@ fn watch_paths_with_strategy<P: AsRef<Utf8Path>, F>(
     watched_paths: &[P],
     assets_dir: &Utf8Path,
     strategy: WatchStrategy,
+    quiet: bool,
     action: &mut F,
 ) -> eyre::Result<()>
 where
@@ -49,7 +52,9 @@ where
     // All files and directories at that path and
     // below will be monitored for changes.
 
-    print!("[watch] ");
+    if !quiet {
+        print!("[watch] ");
+    }
     for watched_path in watched_paths {
         let watched_path = watched_path.as_ref();
         if !watched_path.exists() {
@@ -73,9 +78,13 @@ where
 
         let mode = watch_mode_for_path(watched_path);
         watcher.watch(watched_path.as_std_path(), mode)?;
-        print!("\"{}\"  ", display_watch_path(watched_path));
+        if !quiet {
+            print!("\"{}\"  ", display_watch_path(watched_path));
+        }
     }
-    println!("\n\nPress Ctrl+C to stop watching.\n");
+    if !quiet {
+        println!("\n\nPress Ctrl+C to stop watching.\n");
+    }
 
     loop {
         let now = Instant::now();
@@ -109,7 +118,7 @@ where
                 let Some(changed_paths) = batcher.take_ready(Instant::now()) else {
                     continue;
                 };
-                process_batch(&changed_paths, &mut fold_state, strategy, action)?;
+                process_batch(&changed_paths, &mut fold_state, strategy, quiet, action)?;
             }
             Err(RecvTimeoutError::Disconnected) => break,
         }
@@ -122,15 +131,18 @@ fn process_batch<F>(
     changed_paths: &[Utf8PathBuf],
     fold_state: &mut WatchChangeFoldState,
     strategy: WatchStrategy,
+    quiet: bool,
     action: &mut F,
 ) -> eyre::Result<()>
 where
     F: FnMut(&[Utf8PathBuf]) -> eyre::Result<()>,
 {
-    for line in (strategy.format_change_lines)(fold_state, changed_paths) {
-        println!("{line}");
+    if !quiet {
+        for line in (strategy.format_change_lines)(fold_state, changed_paths) {
+            println!("{line}");
+        }
+        std::io::stdout().flush()?;
     }
-    std::io::stdout().flush()?;
     if let Err(err) = action(changed_paths) {
         // A warning color should be used here, as rebuild failures during user editing are acceptable.
         color_print::ceprintln!("<y>[watch] Rebuild failed: {}</>", err);
