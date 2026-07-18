@@ -46,8 +46,8 @@ pub fn write_to_inline_html<P: AsRef<Utf8Path>>(
 
 pub fn html_to_body_content(html: &str) -> eyre::Result<String> {
     let start_pos = html
-        .find("<html>")
-        .map(|pos| pos + 6)
+        .find("<html")
+        .and_then(|pos| html[pos..].find('>').map(|offset| pos + offset + 1))
         .ok_or_else(|| eyre!("missing `<html>` tag in typst html output"))?;
     let end_pos = html
         .rfind("</html>")
@@ -217,6 +217,13 @@ mod tests {
     #[test]
     fn test_html_to_body_content_ok() {
         let html = "<html><p>Hello</p></html>";
+        let body = html_to_body_content(html).unwrap();
+        assert_eq!(body, "<p>Hello</p>");
+    }
+
+    #[test]
+    fn test_html_to_body_content_with_html_attributes() {
+        let html = r#"<html lang="en"><p>Hello</p></html>"#;
         let body = html_to_body_content(html).unwrap();
         assert_eq!(body, "<p>Hello</p>");
     }
