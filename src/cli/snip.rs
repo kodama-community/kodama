@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use camino::Utf8Path;
 use eyre::{eyre, WrapErr};
 use serde::Serialize;
 
@@ -59,7 +60,7 @@ impl Snippet {
 /// This function invokes the [`environment::init_environment`] function to initialize the environment
 pub fn snip(command: &SnipCommand) -> eyre::Result<()> {
     let config_path = &command.config;
-    environment::init_environment(config_path.into(), environment::BuildMode::Serve)?;
+    environment::init_environment(Utf8Path::new(config_path), environment::BuildMode::Serve)?;
 
     if command.section {
         section_snippets()?;

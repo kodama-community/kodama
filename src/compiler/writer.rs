@@ -198,7 +198,7 @@ impl Writer {
         Ok(html_flake::html_footer(&references_html, &backlinks_html))
     }
 
-    fn sort_footer_slugs(slugs: &mut Vec<Slug>, state: &CompileState, footer_sort_by: &str) {
+    fn sort_footer_slugs(slugs: &mut [Slug], state: &CompileState, footer_sort_by: &str) {
         let sort_key = footer_sort_by.trim();
         slugs.sort_by(|left, right| {
             let left_section = state.compiled().get(left);

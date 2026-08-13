@@ -10,7 +10,7 @@ pub mod text;
 pub mod toc;
 
 use build::Build;
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use kodama::Kodama;
 use publish::Publish;
 use serde::{Deserialize, Serialize};
@@ -42,7 +42,7 @@ pub struct Config {
 }
 
 /// Try to find toml file in the current directory or the parent directory.
-pub fn find_config(mut toml_file: Utf8PathBuf) -> eyre::Result<Utf8PathBuf> {
+pub fn find_config(toml_file: &Utf8Path) -> eyre::Result<Utf8PathBuf> {
     if !toml_file.exists() {
         let parent = toml_file
             .parent()
@@ -55,12 +55,14 @@ pub fn find_config(mut toml_file: Utf8PathBuf) -> eyre::Result<Utf8PathBuf> {
             )
         })?;
 
-        toml_file = parent.join(DEFAULT_CONFIG_PATH);
+        let toml_file = parent.join(DEFAULT_CONFIG_PATH);
         if !toml_file.exists() {
             return Err(eyre::eyre!("cannot find configuration file: {}", toml_file));
         }
+        Ok(toml_file)
+    } else {
+        Ok(toml_file.to_owned())
     }
-    Ok(toml_file)
 }
 
 pub fn parse_config(config: &str) -> eyre::Result<Config> {

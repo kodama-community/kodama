@@ -4,7 +4,7 @@
 
 use std::sync::{OnceLock, RwLock};
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use eyre::eyre;
 
 use crate::{
@@ -132,7 +132,7 @@ pub(super) fn with_test_environment<R>(
     f()
 }
 
-pub fn init_environment(toml_file: Utf8PathBuf, build_mode: BuildMode) -> eyre::Result<()> {
+pub fn init_environment(toml_file: &Utf8Path, build_mode: BuildMode) -> eyre::Result<()> {
     let toml_file = config::find_config(toml_file)?;
 
     let (root, _file_name) = path_utils::split_file_name(&toml_file)

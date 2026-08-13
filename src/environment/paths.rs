@@ -50,7 +50,7 @@ pub fn create_parent_dirs<P: AsRef<Utf8Path>>(path: P) {
     }
 }
 
-pub fn auto_create_dir_path<P: AsRef<Utf8Path>>(paths: Vec<P>) -> Utf8PathBuf {
+pub fn auto_create_dir_path<P: AsRef<Utf8Path>>(paths: impl IntoIterator<Item = P>) -> Utf8PathBuf {
     let mut filepath: Utf8PathBuf = super::root_dir();
     for path in paths {
         filepath.push(path);

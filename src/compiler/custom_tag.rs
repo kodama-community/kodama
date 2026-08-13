@@ -181,9 +181,7 @@ impl<'a> Iterator for HTMLParser<'a> {
 
         let mut stack = vec![];
 
-        let Some(capture) = self.captures.next() else {
-            return None;
-        };
+        let capture = self.captures.next()?;
         let (mut open_tag, mattrs) = match get_tag(capture) {
             Ok(tag) => tag,
             Err(err) => return Some(Err(err)),

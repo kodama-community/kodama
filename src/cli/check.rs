@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use camino::Utf8Path;
 use eyre::{bail, eyre, WrapErr};
 
 use crate::{
@@ -66,7 +67,7 @@ impl Diagnostic {
 }
 
 pub fn check(command: &CheckCommand) -> eyre::Result<()> {
-    environment::init_environment(command.config.clone().into(), BuildMode::Check)?;
+    environment::init_environment(Utf8Path::new(&command.config), BuildMode::Check)?;
 
     let trees_dir = environment::trees_dir();
     let workspace = compiler::all_trees_source(trees_dir.as_path())

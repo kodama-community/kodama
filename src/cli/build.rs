@@ -94,7 +94,7 @@ pub fn build_with_dirty(
     options: BuildOptions,
     dirty_paths: Option<&DirtySet>,
 ) -> eyre::Result<()> {
-    environment::init_environment(config.into(), mode)?;
+    environment::init_environment(Utf8Path::new(config), mode)?;
     environment::ensure_cache_version()?;
     _ = VERBOSE.set(options.verbose);
     _ = VERBOSE_SKIP.set(options.verbose_skip);
@@ -124,7 +124,7 @@ pub fn build_with_dirty(
 }
 
 pub fn serve_rewrite_from_memory(config: &str, options: BuildOptions) -> eyre::Result<()> {
-    environment::init_environment(config.into(), BuildMode::Serve)?;
+    environment::init_environment(Utf8Path::new(config), BuildMode::Serve)?;
     environment::ensure_cache_version()?;
     _ = VERBOSE.set(options.verbose);
     _ = VERBOSE_SKIP.set(options.verbose_skip);

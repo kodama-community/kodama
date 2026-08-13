@@ -2,7 +2,7 @@
 // Released under the GPL-3.0 license as described in the file LICENSE.
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use eyre::{eyre, WrapErr};
 
 use crate::config;
@@ -119,7 +119,7 @@ fn print_config_upgrade_message(source_path: &camino::Utf8Path, output_path: &ca
 }
 
 fn resolve_config_path(config_path: &str) -> eyre::Result<Utf8PathBuf> {
-    config::find_config(Utf8PathBuf::from(config_path)).wrap_err_with(|| {
+    config::find_config(Utf8Path::new(config_path)).wrap_err_with(|| {
         eyre!(
             "failed to locate configuration file from \"{}\"",
             config_path

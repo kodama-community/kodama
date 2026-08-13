@@ -116,7 +116,7 @@ pub fn new_config(command: &NewConfigCommand) -> eyre::Result<()> {
     new_config_inner(&Utf8PathBuf::from(&command.path))
 }
 
-pub fn new_config_inner(config_path: &Utf8PathBuf) -> Result<(), eyre::Error> {
+pub fn new_config_inner(config_path: &Utf8Path) -> Result<(), eyre::Error> {
     let config = config::Config::default();
     let toml = toml::to_string(&config).wrap_err("failed to serialize default config")?;
 
@@ -192,7 +192,7 @@ fn new_section_inner(
     template: &str,
     config: &Utf8Path,
 ) -> eyre::Result<()> {
-    environment::init_environment(config.to_owned(), environment::BuildMode::Publish)?;
+    environment::init_environment(config, environment::BuildMode::Publish)?;
 
     let (section_relative_path, section_ext) = normalize_new_section_path(path, extension)?;
     let section_relative_path = strip_new_post_tree_prefix(

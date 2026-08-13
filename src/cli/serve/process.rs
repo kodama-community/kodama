@@ -2,12 +2,12 @@
 // Released under the GPL-3.0 license as described in the file LICENSE.
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
-use camino::Utf8PathBuf;
+use camino::Utf8Path;
 use eyre::eyre;
 
 use crate::environment;
 
-fn parse_command(command: &[String], output: Utf8PathBuf) -> eyre::Result<std::process::Command> {
+fn parse_command(command: &[String], output: &Utf8Path) -> eyre::Result<std::process::Command> {
     if command.is_empty() {
         return Err(eyre!(
             "invalid `serve.command`: command list cannot be empty"
@@ -17,7 +17,7 @@ fn parse_command(command: &[String], output: Utf8PathBuf) -> eyre::Result<std::p
     let mut serve = std::process::Command::new(&command[0]);
     for arg in &command[1..] {
         if arg == "<output>" {
-            serve.arg(&output);
+            serve.arg(output);
             continue;
         }
         serve.arg(arg);
@@ -27,7 +27,7 @@ fn parse_command(command: &[String], output: Utf8PathBuf) -> eyre::Result<std::p
 
 pub(super) fn spawn_serve_process() -> eyre::Result<std::process::Child> {
     let command = environment::serve_command();
-    let mut serve = parse_command(&command, environment::output_dir())?
+    let mut serve = parse_command(&command, &environment::output_dir())?
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()?;

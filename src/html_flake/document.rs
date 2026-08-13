@@ -25,7 +25,7 @@ pub fn html_doc(
     let base_url = environment::base_url();
     let doc_type = "<!DOCTYPE html>";
 
-    let nav_html = html_nav(toc_class, catalog_html);
+    let nav_html = html_nav(&toc_class, catalog_html);
     let html = html!(html lang="en-US" {
         head {
             r#"
@@ -170,7 +170,7 @@ fn html_themes() -> String {
     html!(div id="theme-options" { (html_import_theme()) })
 }
 
-pub fn html_nav(toc_class: Vec<&str>, catalog_html: &str) -> String {
+pub fn html_nav(toc_class: &[&str], catalog_html: &str) -> String {
     html!(nav id="toc" class={toc_class.join(" ")} {
         (html_themes()) (catalog_html)
     })
@@ -208,7 +208,7 @@ theme-lock = true
         .unwrap();
 
         environment::with_test_environment(root.clone(), environment::BuildMode::Publish, || {
-            environment::init_environment(config_path.clone(), environment::BuildMode::Publish)
+            environment::init_environment(config_path.as_path(), environment::BuildMode::Publish)
                 .unwrap();
 
             let css = html_dynamic_css();
