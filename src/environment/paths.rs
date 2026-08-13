@@ -16,7 +16,8 @@ pub fn full_url<P: AsRef<Utf8Path>>(path: P) -> String {
     let path = path_utils::pretty_path(path.as_ref());
     if let Some(stripped) = path.strip_prefix("/") {
         return format!("{base_url}{stripped}");
-    } else if let Some(stripped) = path.strip_prefix("./") {
+    }
+    if let Some(stripped) = path.strip_prefix("./") {
         return format!("{base_url}{stripped}");
     }
     format!("{base_url}{path}")

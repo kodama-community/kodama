@@ -220,16 +220,15 @@ fn new_section_inner(
 
     if section_path.exists() {
         return Err(eyre::eyre!("already exists: {}", section_path));
-    } else {
-        let parent = section_path.parent().ok_or_else(|| {
-            eyre::eyre!(
-                "failed to resolve parent directory for section path: {}",
-                section_path
-            )
-        })?;
-        std::fs::create_dir_all(parent)
-            .map_err(|e| eyre::eyre!("failed to create section directory: {}", e))?;
     }
+    let parent = section_path.parent().ok_or_else(|| {
+        eyre::eyre!(
+            "failed to resolve parent directory for section path: {}",
+            section_path
+        )
+    })?;
+    std::fs::create_dir_all(parent)
+        .map_err(|e| eyre::eyre!("failed to create section directory: {}", e))?;
 
     std::fs::write(&section_path, content)
         .map_err(|e| eyre::eyre!("failed to create section file: {}", e))?;

@@ -24,9 +24,10 @@ impl Taxon {
     pub fn display(&self) -> String {
         match &self.numbering {
             Some(numbering) => {
-                let text = match self.text.ends_with(". ") {
-                    true => &self.text[0..self.text.len() - 2],
-                    false => &self.text,
+                let text = if self.text.ends_with(". ") {
+                    &self.text[..self.text.len() - 2]
+                } else {
+                    &self.text
                 };
                 format!("{} {} ", text, numbering)
             }

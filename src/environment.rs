@@ -171,11 +171,7 @@ pub const HASH_DIR_NAME: &str = "hash";
 pub const ENTRY_DIR_NAME: &str = "entry";
 
 pub fn to_page_suffix(pretty_urls: bool) -> String {
-    let page_suffix = match pretty_urls {
-        true => "",
-        false => ".html",
-    };
-    page_suffix.into()
+    if pretty_urls { "" } else { ".html" }.into()
 }
 
 pub fn root_dir() -> Utf8PathBuf {

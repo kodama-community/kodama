@@ -300,9 +300,10 @@ impl EntryMetaData {
 
     /// hidden suffix `/index` in slug text.
     pub fn to_slug_text(slug: &str) -> String {
-        let mut slug_text = match slug.ends_with("/index") {
-            true => &slug[..slug.len() - "/index".len()],
-            false => slug,
+        let mut slug_text = if slug.ends_with("/index") {
+            &slug[..slug.len() - "/index".len()]
+        } else {
+            slug
         };
         if environment::is_short_slug() {
             let pos = slug_text.rfind("/").map_or(0, |n| n + 1);

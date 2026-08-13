@@ -40,12 +40,11 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Metadata<'_, E> {
                     self.state = false;
                 }
                 Event::Text(ref text) => {
-                    if self.state && !text.trim().is_empty() {
-                        if let Err(e) = parse_metadata(text, self.metadata) {
-                            return Some(Err(e.wrap_err("failed to parse metadata")));
-                        }
-                    } else {
+                    if !(self.state && !text.trim().is_empty()) {
                         return Some(Ok(e));
+                    }
+                    if let Err(e) = parse_metadata(text, self.metadata) {
+                        return Some(Err(e.wrap_err("failed to parse metadata")));
                     }
                 }
                 _ => return Some(Ok(e)),
