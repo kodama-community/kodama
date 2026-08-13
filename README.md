@@ -9,13 +9,15 @@ A [Typst](https://github.com/typst/typst)-friendly static Zettelkästen site gen
 
 ## Features
 
-- Single binary, command-line program.
+- **Small, self-contained binary.** A single command-line executable of a few megabytes, with a deliberately minimal dependency footprint — optional features are disabled across all dependencies, so there is nothing extra to install or carry around.
 
-- Typst support, which compiles via Typst installed on the user's device and embeds as SVG / HTML, thus all Typst features are available. Additionally, there are style optimizations for inline formulas written in Typst.
+- **Fast incremental rebuilds.** In `serve` mode, changes are picked up from a watcher-driven dirty set and compiled incrementally against an in-memory session; output pages that are unchanged are skipped via content hashing, so rebuilds touch only what actually changed and avoid redundant file writes.
 
-- Fully automatic support for light and dark themes, including for formulas or color images output by Typst. Users can also manually adjust any detail of the website style without needing to rebuild the Kodama tool itself.
+- **Typst support.** Markdown and Typst sources are compiled using the Typst installation on the user's device and embedded as SVG / HTML, so the full Typst feature set is available. Inline formulas written in Typst receive additional style optimizations.
 
-- Organize Markdown files in the manner of [Jon Sterling](https://www.jonmsterling.com/index/index.xml)'s [Forester](https://www.forester-notes.org/index/index.xml).
+- **Automatic light and dark themes.** Light/dark theme switching works out of the box, including for formulas and color images produced by Typst. Any detail of the site style can still be adjusted manually, without rebuilding Kodama itself.
+
+- **Forester-style organization.** Markdown files are organized in the manner of [Jon Sterling](https://www.jonmsterling.com/index/index.xml)'s [Forester](https://www.forester-notes.org/index/index.xml).
 
 # Docs
 
