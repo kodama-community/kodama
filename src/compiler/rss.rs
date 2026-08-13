@@ -107,7 +107,7 @@ fn collect_items(state: &CompileState) -> eyre::Result<Vec<FeedItem>> {
         let title = section
             .metadata
             .page_title()
-            .or_else(|| section.metadata.title())
+            .or_else(|| section.metadata.title().map(String::as_str))
             .map(|value| value.trim())
             .filter(|value| !value.is_empty())
             .unwrap_or(slug.as_str())
@@ -115,7 +115,7 @@ fn collect_items(state: &CompileState) -> eyre::Result<Vec<FeedItem>> {
         let date = section
             .metadata
             .get_str("date")
-            .cloned()
+            .map(str::to_owned)
             .unwrap_or_default();
         let link = environment::full_html_url(slug);
         let content_html = Writer::rss_content_html(section, state)?;
@@ -186,7 +186,7 @@ fn channel_title(state: &CompileState) -> String {
             section
                 .metadata
                 .page_title()
-                .or_else(|| section.metadata.title())
+                .or_else(|| section.metadata.title().map(String::as_str))
         })
         .map(|value| value.trim())
         .filter(|value| !value.is_empty())

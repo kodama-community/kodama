@@ -15,7 +15,7 @@ const HEADER_LOGO_PREFIX: &str = "\u{00AB} "; // «
 
 pub fn html_article_inner(
     metadata: &EntryMetaData,
-    contents: &String,
+    contents: &str,
     hide_metadata: bool,
     open: bool,
     adhoc_title: Option<&str>,
@@ -34,7 +34,7 @@ pub fn html_article_inner(
     ))
 }
 
-pub fn html_footer_section(id: &str, summary: &str, content: &String) -> String {
+pub fn html_footer_section(id: &str, summary: &str, content: &str) -> String {
     let summary = format!("<header><h1>{}</h1></header>", summary);
     let inner_html = format!("{}{}", (html!(summary { (summary) })), content);
     let html_details = format!("<details open>{}</details>", inner_html);
@@ -42,18 +42,18 @@ pub fn html_footer_section(id: &str, summary: &str, content: &String) -> String 
 }
 
 pub fn html_section(
-    summary: &String,
-    content: &String,
+    summary: &str,
+    content: &str,
     hide_metadata: bool,
     open: bool,
     id: String,
-    data_taxon: Option<&String>,
+    data_taxon: Option<&str>,
 ) -> String {
     let mut class_name: Vec<&str> = vec!["block"];
     if hide_metadata {
         class_name.push("hide-metadata");
     }
-    let data_taxon = data_taxon.map_or("", |s| s);
+    let data_taxon = data_taxon.unwrap_or("");
     let open = if open { "open" } else { "" };
     let inner_html = format!("{}{}", (html!(summary id={id} { (summary) })), content);
     let html_details = format!("<details {}>{}</details>", open, inner_html);

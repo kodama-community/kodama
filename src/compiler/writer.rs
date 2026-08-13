@@ -98,7 +98,7 @@ impl Writer {
             &section.references,
             callback,
         )?;
-        let page_title = section.metadata.page_title().map_or("", |s| s.as_str());
+        let page_title = section.metadata.page_title().unwrap_or("");
 
         let html = crate::html_flake::html_doc(
             page_title,
@@ -133,7 +133,7 @@ impl Writer {
 
         let href = environment::full_html_url(parent);
         let title = section.metadata.title().map_or("", |s| s);
-        let page_title = section.metadata.page_title().map_or("", |s| s);
+        let page_title = section.metadata.page_title().unwrap_or("");
         html_flake::html_header_nav(title, page_title, &href)
     }
 
@@ -222,17 +222,17 @@ impl Writer {
     ) -> &'a str {
         match footer_sort_by {
             "slug" => slug.as_str(),
-            "date" => section.metadata.get_str("date").map_or("", String::as_str),
-            "taxon" => section.metadata.data_taxon().map_or("", String::as_str),
+            "date" => section.metadata.get_str("date").unwrap_or(""),
+            "taxon" => section.metadata.data_taxon().unwrap_or(""),
             "title" => section.metadata.title().map_or("", String::as_str),
-            key => section.metadata.get_str(key).map_or("", String::as_str),
+            key => section.metadata.get_str(key).unwrap_or(""),
         }
     }
 
     fn catalog_item(section: &Section, taxon: &str, child_html: &str) -> eyre::Result<String> {
         let slug = section.slug()?;
         let title = section.metadata.title().map_or("", |s| s);
-        let page_title = section.metadata.page_title().map_or("", |s| s);
+        let page_title = section.metadata.page_title().unwrap_or("");
         let use_hash_href = Writer::is_internal_anonymous_subtree(section)?;
         Ok(html_flake::catalog_item(
             slug,
@@ -264,7 +264,7 @@ impl Writer {
         match footer_mode {
             FooterMode::Link => {
                 let summary = section.metadata.to_header(None, None)?;
-                let data_taxon = section.metadata.data_taxon().map_or("", |s| s);
+                let data_taxon = section.metadata.data_taxon().unwrap_or("");
                 Ok(format!(
                     r#"<section class="block" data-taxon="{data_taxon}" style="margin-bottom: 0.4em;">{summary}</section>"#
                 ))

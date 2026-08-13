@@ -342,18 +342,11 @@ mod tests {
 
         let child = find_section(&sections, Slug::new("book/child"));
         assert_eq!(
-            child
-                .metadata
-                .title()
-                .and_then(HTMLContent::as_string)
-                .map(String::as_str),
+            child.metadata.title().and_then(HTMLContent::as_str),
             Some("Child")
         );
-        assert_eq!(child.metadata.ext().map(String::as_str), Some("typst"));
-        assert_eq!(
-            child.metadata.get_str(KEY_SOURCE_SLUG).map(String::as_str),
-            Some("book/index")
-        );
+        assert_eq!(child.metadata.ext(), Some("typst"));
+        assert_eq!(child.metadata.get_str(KEY_SOURCE_SLUG), Some("book/index"));
     }
 
     #[test]
@@ -381,11 +374,7 @@ mod tests {
 
         let child = find_section(&sections, Slug::new("book/child"));
         assert_eq!(
-            child
-                .metadata
-                .title()
-                .and_then(HTMLContent::as_string)
-                .map(String::as_str),
+            child.metadata.title().and_then(HTMLContent::as_str),
             Some("Inner")
         );
     }
@@ -418,10 +407,7 @@ mod tests {
 
         let anonymous = find_section(&sections, anonymous_slug);
         assert_eq!(
-            anonymous
-                .metadata
-                .get_str(KEY_INTERNAL_ANON_SUBTREE)
-                .map(String::as_str),
+            anonymous.metadata.get_str(KEY_INTERNAL_ANON_SUBTREE),
             Some("true")
         );
     }

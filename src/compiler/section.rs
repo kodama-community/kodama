@@ -84,14 +84,6 @@ impl HTMLContent {
         }
     }
 
-    pub fn as_string(&self) -> Option<&String> {
-        if let HTMLContent::Plain(s) = self {
-            Some(s)
-        } else {
-            None
-        }
-    }
-
     pub fn remove_all_tags(&self) -> String {
         static RE_TAGS: LazyLock<Regex> = LazyLock::new(|| {
             let attrs = r#"(\s+[a-zA-Z-]+(="([^"\\]|\\[\s\S])*")?)*"#;
@@ -194,7 +186,7 @@ impl UnresolvedSection {
     }
 
     pub fn ext(&self) -> eyre::Result<&str> {
-        self.metadata.ext().map(String::as_str).ok_or_else(|| {
+        self.metadata.ext().ok_or_else(|| {
             eyre!(
                 "missing required metadata `ext` in section. Please update kodama to v0.3.3+ and delete the expired `.cache` folder"
             )

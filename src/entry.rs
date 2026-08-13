@@ -111,8 +111,8 @@ where
     V: Clone,
 {
     fn get(&self, key: &str) -> Option<&V>;
-    fn get_str(&self, key: &str) -> Option<&String>;
-    fn keys(&self) -> impl Iterator<Item = &String>;
+    fn get_str(&self, key: &str) -> Option<&str>;
+    fn keys(&self) -> impl Iterator<Item = &str>;
 
     /// Return all custom metadata values.
     fn etc(&self) -> Vec<V> {
@@ -126,14 +126,11 @@ where
         let Some(value) = self.get_str(key) else {
             return Ok(None);
         };
-        match value.as_str() {
+        match value {
             "true" => Ok(Some(true)),
             "false" => Ok(Some(false)),
             _ => {
-                let slug = self
-                    .get_str(KEY_SLUG)
-                    .map(String::as_str)
-                    .unwrap_or("<unknown>");
+                let slug = self.get_str(KEY_SLUG).unwrap_or("<unknown>");
                 Err(eyre!(
                     "invalid bool metadata in `{}`: `{}` = `{}` (expected `true` or `false`)",
                     slug,
@@ -156,7 +153,7 @@ where
         self.get(KEY_TAXON)
     }
 
-    fn data_taxon(&self) -> Option<&String> {
+    fn data_taxon(&self) -> Option<&str> {
         self.get_str(KEY_DATA_TAXON)
     }
 
@@ -168,7 +165,7 @@ where
         self.get(KEY_TITLE)
     }
 
-    fn page_title(&self) -> Option<&String> {
+    fn page_title(&self) -> Option<&str> {
         self.get_str(KEY_PAGE_TITLE)
     }
 
@@ -176,7 +173,7 @@ where
         self.get_str(KEY_SLUG).map(Slug::new)
     }
 
-    fn ext(&self) -> Option<&String> {
+    fn ext(&self) -> Option<&str> {
         self.get_str(KEY_EXT)
     }
 
@@ -211,12 +208,12 @@ impl MetaData<HTMLContent> for HTMLMetaData {
         self.0.get(key)
     }
 
-    fn get_str(&self, key: &str) -> Option<&String> {
-        self.0.get(key).and_then(HTMLContent::as_string)
+    fn get_str(&self, key: &str) -> Option<&str> {
+        self.0.get(key).and_then(HTMLContent::as_str)
     }
 
-    fn keys(&self) -> impl Iterator<Item = &String> {
-        self.0.keys()
+    fn keys(&self) -> impl Iterator<Item = &str> {
+        self.0.keys().map(String::as_str)
     }
 }
 
@@ -225,12 +222,12 @@ impl MetaData<String> for EntryMetaData {
         self.0.get(key)
     }
 
-    fn get_str(&self, key: &str) -> Option<&String> {
-        self.0.get(key)
+    fn get_str(&self, key: &str) -> Option<&str> {
+        self.0.get(key).map(String::as_str)
     }
 
-    fn keys(&self) -> impl Iterator<Item = &String> {
-        self.0.keys()
+    fn keys(&self) -> impl Iterator<Item = &str> {
+        self.0.keys().map(String::as_str)
     }
 }
 
@@ -269,7 +266,7 @@ impl EntryMetaData {
         let slug = self
             .slug()
             .ok_or_else(|| eyre!("missing required metadata `slug` while rendering header"))?;
-        let ext = self.ext().map(String::as_str).ok_or_else(|| {
+        let ext = self.ext().ok_or_else(|| {
             eyre!(
                 "missing required metadata `ext` while rendering header for `{}`",
                 slug
@@ -284,8 +281,8 @@ impl EntryMetaData {
             slug: &slug,
             ext,
             show_slug,
-            source_slug: self.get_str(KEY_SOURCE_SLUG).map(String::as_str),
-            source_pos: self.get_str(KEY_SOURCE_POS).map(String::as_str),
+            source_slug: self.get_str(KEY_SOURCE_SLUG),
+            source_pos: self.get_str(KEY_SOURCE_POS),
             etc: &etc,
         }))
     }
@@ -310,10 +307,7 @@ impl EntryMetaData {
             return Ok(None);
         };
         value.parse().map(Some).map_err(|_| {
-            let slug = self
-                .get_str(KEY_SLUG)
-                .map(String::as_str)
-                .unwrap_or("<unknown>");
+            let slug = self.get_str(KEY_SLUG).unwrap_or("<unknown>");
             eyre!(
                 "invalid metadata in `{}`: `footer-mode = {}` (expected `embed` or `link`)",
                 slug,

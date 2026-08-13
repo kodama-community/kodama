@@ -177,7 +177,7 @@ impl CompileState {
                                 .map_or_else(String::new, HTMLContent::remove_all_tags);
                             let page_title_plain = metadata
                                 .and_then(|s| s.page_title())
-                                .map(|s| strip_html_tags(s))
+                                .map(strip_html_tags)
                                 .unwrap_or_else(|| article_title_plain.clone());
 
                             if link_slug != slug && is_reference(shallows, link_slug)? {
@@ -226,8 +226,8 @@ impl CompileState {
                 ));
             };
             if is_plain_metadata(key) {
-                if let Some(val) = value.as_string() {
-                    metadata.update(key.clone(), val.clone());
+                if let Some(val) = value.as_str() {
+                    metadata.update(key.to_owned(), val.to_owned());
                 } else {
                     return Err(eyre!(
                         "metadata field `{}` in `{}` is expected to be plain text",
@@ -245,7 +245,7 @@ impl CompileState {
                     )
                 })?;
                 let html = compiled.spanned();
-                metadata.update(key.clone(), html);
+                metadata.update(key.to_owned(), html);
             };
         }
 
@@ -374,8 +374,8 @@ fn get_metadata(shallows: &UnresolvedSections, slug: Slug) -> Option<&HTMLMetaDa
 
 fn html_content_to_html_string(content: &HTMLContent) -> String {
     content
-        .as_string()
-        .cloned()
+        .as_str()
+        .map(str::to_owned)
         .unwrap_or_else(|| content.remove_all_tags())
 }
 
@@ -395,7 +395,7 @@ fn is_reference(shallows: &UnresolvedSections, slug: Slug) -> eyre::Result<bool>
         Some(section) => {
             let metadata = &section.metadata;
             Ok(metadata.is_asref()?.unwrap_or(environment::asref())
-                || Taxon::is_reference(metadata.data_taxon().map_or("", String::as_str)))
+                || Taxon::is_reference(metadata.data_taxon().unwrap_or("")))
         }
         None => Ok(false),
     }

@@ -544,14 +544,17 @@ fn parse_attrs(attrs: &str) -> eyre::Result<HashMap<String, String>> {
 fn parse_subtree_option(attrs: &HashMap<String, String>) -> SectionOption {
     let defaults = SectionOption::default();
     SectionOption::new(
-        parse_bool_attr(attrs.get("numbering"), defaults.numbering),
-        parse_bool_attr(attrs.get("open"), defaults.details_open),
-        parse_bool_attr(attrs.get("catalog"), defaults.catalog),
+        parse_bool_attr(
+            attrs.get("numbering").map(String::as_str),
+            defaults.numbering,
+        ),
+        parse_bool_attr(attrs.get("open").map(String::as_str), defaults.details_open),
+        parse_bool_attr(attrs.get("catalog").map(String::as_str), defaults.catalog),
     )
 }
 
-fn parse_bool_attr(value: Option<&String>, default: bool) -> bool {
-    match value.map(|s| s.as_str()) {
+fn parse_bool_attr(value: Option<&str>, default: bool) -> bool {
+    match value {
         None | Some("auto") => default,
         Some("false") | Some("0") | Some("none") => false,
         _ => true,
@@ -831,7 +834,7 @@ anonymous body
         assert!(anonymous
             .metadata
             .get(KEY_INTERNAL_ANON_SUBTREE)
-            .and_then(HTMLContent::as_string)
+            .and_then(HTMLContent::as_str)
             .is_some_and(|v| v == "true"));
     }
 
@@ -870,27 +873,21 @@ child body
         apply_subtree_defaults(&mut child, &extracted.subtrees[0]);
         assert_eq!(child.metadata.slug(), Some(Slug::new("book/child")));
         assert_eq!(
-            child
-                .metadata
-                .title()
-                .and_then(|v| v.as_string())
-                .map(String::as_str),
+            child.metadata.title().and_then(HTMLContent::as_str),
             Some("Child")
         );
         assert_eq!(
             child
                 .metadata
                 .get(KEY_SOURCE_SLUG)
-                .and_then(HTMLContent::as_string)
-                .map(String::as_str),
+                .and_then(HTMLContent::as_str),
             Some("book/index")
         );
         assert_eq!(
             child
                 .metadata
                 .get(KEY_SOURCE_POS)
-                .and_then(HTMLContent::as_string)
-                .map(String::as_str),
+                .and_then(HTMLContent::as_str),
             Some("5:1")
         );
     }
@@ -969,7 +966,7 @@ outer
                 section
                     .metadata
                     .get(KEY_INTERNAL_ANON_SUBTREE)
-                    .and_then(HTMLContent::as_string)
+                    .and_then(HTMLContent::as_str)
                     .is_some_and(|value| value == "true")
                     .then_some(section)
             })
@@ -1005,7 +1002,7 @@ outer
                 section
                     .metadata
                     .get(KEY_INTERNAL_ANON_SUBTREE)
-                    .and_then(HTMLContent::as_string)
+                    .and_then(HTMLContent::as_str)
                     .is_some_and(|value| value == "true")
                     .then_some(*slug)
             })
