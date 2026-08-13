@@ -29,7 +29,7 @@ pub use config_access::{
     typst_root_dir,
 };
 pub use hashing::{
-    file_meta_updated, relative_source_meta, verify_update_hash, SourceMeta,
+    file_meta_updated, relative_source_meta, SourceMeta,
 };
 pub use imports::{import_fonts_html, import_math_html, import_meta_html, import_style_html};
 pub use paths::{

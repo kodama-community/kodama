@@ -9,7 +9,7 @@ use crate::{
     compiler::counter::Counter,
     config::build::FooterMode,
     entry::{MetaData, KEY_INTERNAL_ANON_SUBTREE},
-    environment::{self, verify_update_hash},
+    environment,
     html_flake::{self, html_footer_section},
     slug::Slug,
 };
@@ -29,22 +29,10 @@ impl Writer {
         let relative_path = format!("{}.html", section.slug()?);
         let filepath = crate::environment::output_path(&relative_path);
 
-        match verify_update_hash(&relative_path, &html) {
-            Ok(true) => {
-                if let Err(err) = std::fs::write(&filepath, html) {
-                    color_print::ceprintln!("<r>{:?}</>", err);
-                } else if *crate::cli::build::verbose() {
-                    color_print::ceprintln!("<g>[build]</> {:?} {}", page_title, filepath);
-                }
-            }
-            Ok(false) => {}
-            Err(err) => {
-                color_print::ceprintln!(
-                    "<y>Warning: failed to verify hash for `{}`: {}</>",
-                    relative_path,
-                    err
-                );
-            }
+        if let Err(err) = std::fs::write(&filepath, html) {
+            color_print::ceprintln!("<r>{:?}</>", err);
+        } else if *crate::cli::build::verbose() {
+            color_print::ceprintln!("<g>[build]</> {:?} {}", page_title, filepath);
         }
 
         Ok(())

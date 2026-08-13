@@ -179,7 +179,7 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
             });
 
             if should_restart {
-                // Config changes can alter compiler behavior globally; keep full-hash baseline here.
+                // Config changes can alter compiler behavior globally; do a full build.
                 serve_build(None)?;
                 if print_json {
                     print_preview_event("rebuilt")?;
@@ -208,7 +208,7 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
                     print_preview_event("rebuilt")?;
                 }
             } else {
-                // Serve mode uses watcher-driven dirty set to avoid full hash scans on every rebuild.
+                // Serve mode uses a watcher-driven dirty set to rebuild only affected sources.
                 serve_build(Some(&analysis.dirty_paths))?;
                 if print_json {
                     print_preview_event("rebuilt")?;

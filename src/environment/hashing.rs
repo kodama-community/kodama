@@ -46,17 +46,6 @@ pub fn relative_source_meta<P: AsRef<Utf8Path>>(relative_path: P) -> Option<Sour
     source_meta_of(super::trees_dir().join(relative_path.as_ref()))
 }
 
-/// FNV-1a 64-bit. Deterministic and stable across Rust compiler versions,
-/// unlike `DefaultHasher`.
-fn fnv1a_64(bytes: &[u8]) -> u64 {
-    let mut hash: u64 = 0xcbf29ce484222325;
-    for &byte in bytes {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    hash
-}
-
 fn read_meta_file(path: &Utf8Path) -> Option<SourceMeta> {
     let text = std::fs::read_to_string(path).ok()?;
     let (modified_ns, size) = text.trim().split_once(':')?;
@@ -92,31 +81,6 @@ pub fn file_meta_updated<P: AsRef<Utf8Path>>(relative_path: P) -> eyre::Result<b
     let is_modified = read_meta_file(meta_path.as_path()) != Some(current);
     if is_modified {
         write_meta_file(meta_path.as_path(), current)?;
-    }
-    Ok(is_modified)
-}
-
-/// Checks whether the content's hash differs from the stored hash. If it does,
-/// updates the stored hash. The content is already in memory, so only the small
-/// hash file is touched on disk.
-pub fn verify_update_hash<P: AsRef<Utf8Path>>(
-    path: P,
-    content: &str,
-) -> Result<bool, std::io::Error> {
-    if *crate::cli::build::no_cache_enabled() {
-        return Ok(true);
-    }
-
-    let hash_path = super::hash_file_path(path.as_ref());
-    let current_hash = fnv1a_64(content.as_bytes());
-    let history_hash = std::fs::read_to_string(hash_path.as_path())
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(0); // no file / invalid hash: 0
-
-    let is_modified = current_hash != history_hash;
-    if is_modified {
-        std::fs::write(&hash_path, current_hash.to_string())?;
     }
     Ok(is_modified)
 }
@@ -171,24 +135,6 @@ mod tests {
 
             fs::write(full_path.as_std_path(), "v22").unwrap();
             assert!(file_meta_updated(relative).unwrap());
-        });
-
-        let _ = fs::remove_dir_all(root.as_std_path());
-    }
-
-    #[test]
-    fn test_verify_update_hash_roundtrip_detects_changes() {
-        let root = crate::test_io::case_dir("env-hash-roundtrip");
-        fs::create_dir_all(root.as_std_path()).unwrap();
-
-        super::super::with_test_environment(root.clone(), super::super::BuildMode::Publish, || {
-            let relative = "hash-tests/a.md";
-            assert!(verify_update_hash(relative, "v1").unwrap());
-            assert!(!verify_update_hash(relative, "v1").unwrap());
-            assert!(verify_update_hash(relative, "v2").unwrap());
-
-            let hash_path = super::super::hash_file_path(relative);
-            assert!(hash_path.exists());
         });
 
         let _ = fs::remove_dir_all(root.as_std_path());

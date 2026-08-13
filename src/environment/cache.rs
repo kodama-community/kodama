@@ -8,7 +8,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use eyre::{eyre, WrapErr};
 
 const CACHE_VERSION_FILE: &str = "version";
-const CACHE_SCHEMA_VERSION: &str = "schema-v4";
+const CACHE_SCHEMA_VERSION: &str = "schema-v5";
 
 fn cache_version_value() -> String {
     format!(
