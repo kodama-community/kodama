@@ -4,14 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug, Serialize)]
+#[derive(Deserialize, Debug, Serialize, Default)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct Publish {
     pub rss: bool,
-}
-
-impl Default for Publish {
-    fn default() -> Self {
-        Self { rss: false }
-    }
 }

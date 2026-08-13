@@ -40,7 +40,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Metadata<'_, E> {
                     self.state = false;
                 }
                 Event::Text(ref text) => {
-                    if !(self.state && !text.trim().is_empty()) {
+                    if !self.state || text.trim().is_empty() {
                         return Some(Ok(e));
                     }
                     if let Err(e) = parse_metadata(text, self.metadata) {
