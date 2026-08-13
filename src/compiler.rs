@@ -8,6 +8,7 @@ pub mod callback;
 pub mod counter;
 pub mod custom_tag;
 mod incremental;
+pub mod inline_typst;
 pub mod parser;
 mod rss;
 pub mod section;
@@ -38,7 +39,6 @@ use crate::{
     entry::{MetaData, KEY_INTERNAL_ANON_SUBTREE},
     environment,
     ordered_map::OrderedMap,
-    process::typst_image,
     slug::{Ext, Slug},
 };
 
@@ -215,7 +215,7 @@ pub(super) fn collect_shallows_with_sources(
     workspace: &Workspace,
     dirty_paths: Option<&DirtySet>,
 ) -> eyre::Result<(UnresolvedSections, SourceSectionsIndex)> {
-    typst_image::begin_inline_batch();
+    inline_typst::begin_inline_batch();
 
     let mut pending: Vec<(Slug, ParsedSections, Option<Utf8PathBuf>)> = Vec::new();
     for (&source_slug, &ext) in &workspace.slug_exts {
@@ -226,13 +226,13 @@ pub(super) fn collect_shallows_with_sources(
     // Inline typst formulas are compiled in a single batched invocation once
     // every source has been parsed; only then can the placeholders be resolved
     // and the entry caches written.
-    let results = typst_image::compile_inline_batch();
+    let results = inline_typst::compile_inline_batch();
 
     let mut shallows = HashMap::new();
     let mut source_sections = HashMap::new();
     for (source_slug, mut sections, cache_path) in pending {
         for (_, section) in &mut sections {
-            typst_image::resolve_inline_typst_section(section, &results);
+            inline_typst::resolve_inline_typst_section(section, &results);
         }
         if let Some(entry_path) = cache_path {
             write_entry_cache(entry_path.as_path(), &sections)?;

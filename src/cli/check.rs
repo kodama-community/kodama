@@ -13,10 +13,10 @@ use crate::{
         section::{HTMLContent, LazyContent, UnresolvedSection},
     },
     config,
+    compiler::inline_typst::{self, reset_typst_render_error_flag, typst_render_error_detected},
     environment::{self, BuildMode},
     path_utils,
     process::embed_markdown::{include_error_detected, reset_include_error_flag},
-    process::typst_image::{reset_typst_image_error_flag, typst_image_error_detected},
     slug::{self, Ext, Slug},
 };
 
@@ -86,10 +86,10 @@ pub fn check(command: &CheckCommand) -> eyre::Result<()> {
         ));
     }
 
-    reset_typst_image_error_flag();
+    reset_typst_render_error_flag();
     reset_include_error_flag();
     let shallows = parse_shallows_no_cache(&workspace, &mut diagnostics);
-    if typst_image_error_detected() {
+    if typst_render_error_detected() {
         diagnostics.push(Diagnostic::error(
             "Typst render errors were detected while elaborating markdown content.",
         ));
@@ -149,7 +149,7 @@ fn parse_shallows_no_cache(
         .collect();
     entries.sort_by_key(|(slug, _)| slug.as_str());
 
-    crate::process::typst_image::begin_inline_batch();
+    inline_typst::begin_inline_batch();
     for (slug, ext) in entries {
         match compiler::parse_source_sections(slug, ext) {
             Ok(sections) => {
@@ -168,9 +168,9 @@ fn parse_shallows_no_cache(
     }
 
     // Compile inline formulas (reporting errors) and resolve placeholders.
-    let results = crate::process::typst_image::compile_inline_batch();
+    let results = inline_typst::compile_inline_batch();
     for section in shallows.values_mut() {
-        crate::process::typst_image::resolve_inline_typst_section(section, &results);
+        inline_typst::resolve_inline_typst_section(section, &results);
     }
 
     shallows

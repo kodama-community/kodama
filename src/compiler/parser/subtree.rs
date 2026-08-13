@@ -12,6 +12,7 @@ use crate::{
         MetaData, KEY_EXT, KEY_INTERNAL_ANON_SUBTREE, KEY_SLUG, KEY_SOURCE_POS, KEY_SOURCE_SLUG,
         KEY_TAXON, KEY_TITLE,
     },
+    line_index::LineIndex,
     process::metadata,
     slug::Slug,
 };
@@ -207,6 +208,7 @@ pub(super) fn extract_subtrees_nested(
     let mut root_source = String::new();
     let mut subtrees = Vec::new();
     let mut cursor = 0;
+    let index = LineIndex::new(source);
 
     while let Some(rel) = source[cursor..].find('<') {
         let lt = cursor + rel;
@@ -261,7 +263,7 @@ pub(super) fn extract_subtrees_nested(
                 true,
             )
         };
-        let (line, col) = byte_index_to_line_col(source, lt);
+        let (line, col) = index.line_col_at(source, lt);
         let placeholder_url = format!("{SUBTREE_PLACEHOLDER_PREFIX}{}", subtrees.len());
 
         root_source.push_str(&format!("\n[]({placeholder_url}#:embed)\n"));
@@ -291,22 +293,6 @@ pub(super) fn extract_subtrees_nested(
         root_source,
         subtrees,
     })
-}
-
-fn byte_index_to_line_col(source: &str, idx: usize) -> (usize, usize) {
-    let idx = idx.min(source.len());
-    let mut line = 1usize;
-    let mut col = 1usize;
-
-    for ch in source[..idx].chars() {
-        if ch == '\n' {
-            line += 1;
-            col = 1;
-        } else {
-            col += 1;
-        }
-    }
-    (line, col)
 }
 
 fn find_matching_close_tag(

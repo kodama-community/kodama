@@ -9,7 +9,6 @@ use eyre::{eyre, WrapErr};
 
 use crate::{
     environment,
-    process::typst_image,
     slug::{Ext, Slug},
 };
 
@@ -17,6 +16,7 @@ use super::section::UnresolvedSection;
 use super::{
     compile_from_shallows,
     incremental::{dirty_source_slugs, source_relative_path},
+    inline_typst,
     parse_source_sections, parse_source_sections_with_content,
     stale::cleanup_stale_slug_artifacts,
     write_entry_cache, CompileOutputs, DirtySet, ParsedSections, Workspace,
@@ -82,7 +82,7 @@ impl ServeCompileSession {
 
         let needs_full_write = parse_targets.iter().any(|slug| !dirty_slugs.contains(slug));
 
-        typst_image::begin_inline_batch();
+        inline_typst::begin_inline_batch();
         let mut parsed: Vec<(Slug, Utf8PathBuf, ParsedSections)> = Vec::new();
         for slug in parse_targets {
             let Some(&ext) = workspace.slug_exts.get(&slug) else {
@@ -104,10 +104,10 @@ impl ServeCompileSession {
 
         // Compile all freshly parsed inline formulas in one batch, then resolve
         // their placeholders and write the entry caches.
-        let results = typst_image::compile_inline_batch();
+        let results = inline_typst::compile_inline_batch();
         for (source_slug, entry_path, mut sections) in parsed {
             for (_, section) in &mut sections {
-                typst_image::resolve_inline_typst_section(section, &results);
+                inline_typst::resolve_inline_typst_section(section, &results);
             }
             write_entry_cache(entry_path.as_path(), &sections)?;
 
