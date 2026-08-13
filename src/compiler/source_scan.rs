@@ -127,57 +127,52 @@ pub fn sync_typst_svg_assets(
         return Ok(());
     }
 
-    match dirty_paths {
-        Some(dirty_paths) => {
-            for relative in dirty_paths {
-                if relative.extension() != Some("typ") || is_under_ignored_dir(relative.as_path()) {
-                    continue;
-                }
-                let full_path = trees_dir.join(relative);
-                if !full_path.is_file() {
-                    continue;
-                }
-                compile_typst_svg(trees_dir, relative.as_path());
+    if let Some(dirty_paths) = dirty_paths {
+        for relative in dirty_paths {
+            if relative.extension() != Some("typ") || is_under_ignored_dir(relative.as_path()) {
+                continue;
             }
+            let full_path = trees_dir.join(relative);
+            if !full_path.is_file() {
+                continue;
+            }
+            compile_typst_svg(trees_dir, relative.as_path());
         }
-        None => {
-            for entry in WalkDir::new(trees_dir)
-                .follow_links(true)
-                .into_iter()
-                .filter_entry(|e| {
-                    Utf8Path::from_path(e.path())
-                        .is_some_and(|p| p.is_file() || !should_ignore_dir(p))
-                })
-            {
-                let std_path = match entry {
-                    Ok(entry) => entry.into_path(),
-                    Err(err) => {
-                        color_print::ceprintln!(
-                            "<y>Warning: failed to read path while scanning typ assets: {}</>",
-                            err
-                        );
-                        continue;
-                    }
-                };
-                let path = match Utf8PathBuf::from_path_buf(std_path) {
-                    Ok(path) => path,
-                    Err(non_utf8) => {
-                        color_print::ceprintln!(
-                            "<y>Warning: skipping non-UTF-8 path `{}`.</>",
-                            non_utf8.display()
-                        );
-                        continue;
-                    }
-                };
-                if !path.is_file() || path.extension() != Some("typ") {
+    } else {
+        for entry in WalkDir::new(trees_dir)
+            .follow_links(true)
+            .into_iter()
+            .filter_entry(|e| {
+                Utf8Path::from_path(e.path()).is_some_and(|p| p.is_file() || !should_ignore_dir(p))
+            })
+        {
+            let std_path = match entry {
+                Ok(entry) => entry.into_path(),
+                Err(err) => {
+                    color_print::ceprintln!(
+                        "<y>Warning: failed to read path while scanning typ assets: {}</>",
+                        err
+                    );
                     continue;
                 }
-                let relative = match path.strip_prefix(trees_dir) {
-                    Ok(relative) => relative,
-                    Err(_) => continue,
-                };
-                compile_typst_svg(trees_dir, relative);
+            };
+            let path = match Utf8PathBuf::from_path_buf(std_path) {
+                Ok(path) => path,
+                Err(non_utf8) => {
+                    color_print::ceprintln!(
+                        "<y>Warning: skipping non-UTF-8 path `{}`.</>",
+                        non_utf8.display()
+                    );
+                    continue;
+                }
+            };
+            if !path.is_file() || path.extension() != Some("typ") {
+                continue;
             }
+            let Ok(relative) = path.strip_prefix(trees_dir) else {
+                continue;
+            };
+            compile_typst_svg(trees_dir, relative);
         }
     }
 

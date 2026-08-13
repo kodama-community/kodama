@@ -30,14 +30,13 @@ impl Writer {
         let filepath = crate::environment::output_path(&relative_path);
 
         match verify_update_hash(&relative_path, &html) {
-            Ok(true) => match std::fs::write(&filepath, html) {
-                Ok(()) => {
-                    if *crate::cli::build::verbose() {
-                        color_print::ceprintln!("<g>[build]</> {:?} {}", page_title, filepath);
-                    }
+            Ok(true) => {
+                if let Err(err) = std::fs::write(&filepath, html) {
+                    color_print::ceprintln!("<r>{:?}</>", err);
+                } else if *crate::cli::build::verbose() {
+                    color_print::ceprintln!("<g>[build]</> {:?} {}", page_title, filepath);
                 }
-                Err(err) => color_print::ceprintln!("<r>{:?}</>", err),
-            },
+            }
             Ok(false) => {}
             Err(err) => {
                 color_print::ceprintln!(

@@ -30,38 +30,35 @@ impl Callback {
     }
 
     pub fn insert(&mut self, child_slug: Slug, value: CallbackValue) {
-        match self.0.get_mut(&child_slug) {
-            None => {
-                self.0.insert(child_slug, value);
-            }
-            Some(existed) => {
-                existed.backlinks.extend(value.backlinks);
+        if let Some(existed) = self.0.get_mut(&child_slug) {
+            existed.backlinks.extend(value.backlinks);
 
-                if existed.is_parent_specified {
-                    if value.is_parent_specified {
-                        assert_eq!(existed.parent, value.parent);
-                    }
-                    return;
-                }
+            if existed.is_parent_specified {
                 if value.is_parent_specified {
-                    existed.parent = value.parent;
-                    existed.is_parent_specified = true;
-                    return;
+                    assert_eq!(existed.parent, value.parent);
                 }
-                if existed.parent == "index" {
-                    existed.parent = value.parent;
-                    return;
-                }
-                if value.parent != "index" && existed.parent != value.parent {
-                    color_print::ceprintln!(
-                        "<y>Warning: Multiple parents for `{}`: `{}` and `{}`. Using {}.</>",
-                        child_slug,
-                        existed.parent,
-                        value.parent,
-                        existed.parent
-                    );
-                }
+                return;
             }
+            if value.is_parent_specified {
+                existed.parent = value.parent;
+                existed.is_parent_specified = true;
+                return;
+            }
+            if existed.parent == "index" {
+                existed.parent = value.parent;
+                return;
+            }
+            if value.parent != "index" && existed.parent != value.parent {
+                color_print::ceprintln!(
+                    "<y>Warning: Multiple parents for `{}`: `{}` and `{}`. Using {}.</>",
+                    child_slug,
+                    existed.parent,
+                    value.parent,
+                    existed.parent
+                );
+            }
+        } else {
+            self.0.insert(child_slug, value);
         }
     }
 

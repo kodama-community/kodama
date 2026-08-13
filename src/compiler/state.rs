@@ -52,12 +52,11 @@ fn compile_all_with_missing_index_warning(
     let residued: BTreeSet<Slug> = shallows.keys().copied().collect();
 
     let mut state = CompileState::new(residued);
-    if emit_missing_index_warning && state.compile(shallows, Slug::new("index"))?.is_none() {
+    let compiled_index = state.compile(shallows, Slug::new("index"))?;
+    if emit_missing_index_warning && compiled_index.is_none() {
         color_print::ceprintln!(
             "<y>Warning: Missing `index` section, please provide `index.md` or `index.typst`.</>"
         );
-    } else if !emit_missing_index_warning {
-        let _ = state.compile(shallows, Slug::new("index"))?;
     }
 
     /*
@@ -143,16 +142,14 @@ impl CompileState {
                         LazyContent::Embed(embed_content) => {
                             let child_slug = subsection_slug(slug, &embed_content.url);
 
-                            let refered = match self.fetch_section(shallows, child_slug)? {
-                                Some(refered_section) => refered_section,
-                                None => {
-                                    return Err(eyre!(
+                            let refered =
+                                self.fetch_section(shallows, child_slug)?.ok_or_else(|| {
+                                    eyre!(
                                         "[{}] attempting to fetch a non-existent [{}]",
                                         slug,
                                         child_slug
-                                    ));
-                                }
-                            };
+                                    )
+                                })?;
 
                             if embed_content.option.details_open {
                                 references.extend(refered.references.iter().copied());

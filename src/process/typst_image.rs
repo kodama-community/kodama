@@ -157,10 +157,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
                             self.content = None;
                             continue;
                         };
-                        let auto_math_mode = inline_url
-                            .split('-')
-                            .skip(1)
-                            .any(|arg| arg == "math");
+                        let auto_math_mode = inline_url.split('-').skip(1).any(|arg| arg == "math");
 
                         let mut inline_typst = self.content.take().unwrap_or_default();
                         inline_typst = smart_punctuation_reverse(&inline_typst);

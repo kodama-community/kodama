@@ -99,9 +99,7 @@ fn parse_u8_prefix(token: &str) -> Option<u8> {
 
 fn parse_u32_prefix(token: &str) -> Option<u32> {
     let len = token.bytes().take_while(u8::is_ascii_digit).count();
-    (len > 0)
-        .then(|| token[..len].parse().ok())
-        .flatten()
+    (len > 0).then(|| token[..len].parse().ok()).flatten()
 }
 
 fn validate_ymd(year: u32, month: u8, day: u8) -> Option<(u32, u8, u8)> {

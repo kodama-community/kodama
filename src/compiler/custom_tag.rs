@@ -181,23 +181,21 @@ impl<'a> Iterator for HTMLParser<'a> {
 
         let mut stack = vec![];
 
-        let (mut open_tag, mattrs) = match self.captures.next() {
-            Some(capture) => match get_tag(capture) {
-                Ok(tag) => tag,
-                Err(err) => return Some(Err(err)),
-            },
-            None => return None,
+        let Some(capture) = self.captures.next() else {
+            return None;
         };
-        let attrs_str = match mattrs {
-            Some(attrs) => attrs,
-            None => return Some(Err(eyre!("expecting open kodama tag, found closing tag"))),
+        let (mut open_tag, mattrs) = match get_tag(capture) {
+            Ok(tag) => tag,
+            Err(err) => return Some(Err(err)),
+        };
+        let Some(attrs_str) = mattrs else {
+            return Some(Err(eyre!("expecting open kodama tag, found closing tag")));
         };
         stack.push(open_tag.kind);
 
         let mut close_tag = loop {
-            let capture = match self.captures.next() {
-                Some(capture) => capture,
-                None => return Some(Err(eyre!("unclosed kodama tag: unexpected end of html"))),
+            let Some(capture) = self.captures.next() else {
+                return Some(Err(eyre!("unclosed kodama tag: unexpected end of html")));
             };
             let (tag, mattrs) = match get_tag(capture) {
                 Ok(tag) => tag,
@@ -207,9 +205,8 @@ impl<'a> Iterator for HTMLParser<'a> {
             if mattrs.is_some() {
                 stack.push(tag.kind);
             } else {
-                let last = match stack.pop() {
-                    Some(tag) => tag,
-                    None => return Some(Err(eyre!("found closing tag without matching open tag"))),
+                let Some(last) = stack.pop() else {
+                    return Some(Err(eyre!("found closing tag without matching open tag")));
                 };
                 if tag.kind.tri_equal(&last) == Some(false) {
                     return Some(Err(eyre!("mismatched nested kodama tags")));
@@ -231,13 +228,12 @@ impl<'a> Iterator for HTMLParser<'a> {
 
         let mut attrs: HashMap<&str, Cow<'_, str>> = HashMap::new();
         for c in RE_ATTR.captures_iter(attrs_str) {
-            let key = match c.name("key") {
-                Some(key) => key.as_str(),
-                None => return Some(Err(eyre!("malformed attribute in typst html tag"))),
+            let Some(key) = c.name("key") else {
+                return Some(Err(eyre!("malformed attribute in typst html tag")));
             };
             attrs.insert(
-                key,
-                unescape_attribute(c.name("value").map_or("", |s| s.as_str())),
+                key.as_str(),
+                unescape_attribute(c.name("value").map_or("", |m| m.as_str())),
             );
         }
 

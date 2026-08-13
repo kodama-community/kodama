@@ -151,18 +151,14 @@ impl<E> TextElaborator<'_, E> {
             return;
         }
         let text = std::mem::take(run);
-        match lang_tag {
-            Some(lang_tag) => {
-                self.pending.push_back(Event::InlineHtml(
-                    format!(r#"<span lang="{}">"#, lang_tag.as_bcp47()).into(),
-                ));
-                self.pending.push_back(Event::Text(text.into()));
-                self.pending
-                    .push_back(Event::InlineHtml("</span>".into()));
-            }
-            None => {
-                self.pending.push_back(Event::Text(text.into()));
-            }
+        if let Some(lang_tag) = lang_tag {
+            self.pending.push_back(Event::InlineHtml(
+                format!(r#"<span lang="{}">"#, lang_tag.as_bcp47()).into(),
+            ));
+            self.pending.push_back(Event::Text(text.into()));
+            self.pending.push_back(Event::InlineHtml("</span>".into()));
+        } else {
+            self.pending.push_back(Event::Text(text.into()));
         }
     }
 }
