@@ -139,7 +139,8 @@ pub(super) fn parse_markdown_source(source: &str, slug: Slug) -> eyre::Result<Un
             let events = Footnote::process(events, slug);
             let events = Figure::process(events);
             let events = TypstImage::process(events, slug);
-            let events = TextElaborator::process(events);
+            let events =
+                TextElaborator::process(events).with_enabled(environment::elaborate_cjk_text());
             let events = Embed::process(events, slug);
             normalize_html_content(to_contents(events))
         })
@@ -155,7 +156,7 @@ pub fn parse_spanned_markdown(markdown_input: &str, slug: Slug) -> HTMLContent {
     let events = ignore_paragraph(events);
     let events = Footnote::process(events, slug);
     let events = TypstImage::process(events, slug);
-    let events = TextElaborator::process(events);
+    let events = TextElaborator::process(events).with_enabled(environment::elaborate_cjk_text());
     let events = Embed::process(events, slug);
     normalize_html_content(to_contents(events))
 }

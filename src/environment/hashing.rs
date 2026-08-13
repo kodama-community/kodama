@@ -19,11 +19,12 @@ pub fn is_hash_updated<P: AsRef<Utf8Path>>(content: &str, hash_path: P) -> (bool
     (current_hash != history_hash, current_hash)
 }
 
-/// Checks whether the file has been modified by comparing its current hash with the stored hash.
-/// If the file is modified, updates the stored hash to reflect the latest state.
-pub fn verify_and_file_hash<P: AsRef<Utf8Path>>(relative_path: P) -> eyre::Result<bool> {
+/// Read a source file, update its change-detection hash baseline, and return
+/// whether it was modified together with its full content. Reads the file only
+/// once so callers can reuse the content for parsing instead of re-reading it.
+pub fn read_source_and_hash<P: AsRef<Utf8Path>>(relative_path: P) -> eyre::Result<(bool, String)> {
     if *crate::cli::build::no_cache_enabled() {
-        return Ok(true);
+        return Ok((true, String::new()));
     }
 
     let root_dir = super::trees_dir();
@@ -37,7 +38,13 @@ pub fn verify_and_file_hash<P: AsRef<Utf8Path>>(relative_path: P) -> eyre::Resul
         std::fs::write(&hash_path, current_hash.to_string())
             .wrap_err_with(|| eyre!("failed to write file `{}`", hash_path))?;
     }
-    Ok(is_modified)
+    Ok((is_modified, content))
+}
+
+/// Checks whether the file has been modified by comparing its current hash with the stored hash.
+/// If the file is modified, updates the stored hash to reflect the latest state.
+pub fn verify_and_file_hash<P: AsRef<Utf8Path>>(relative_path: P) -> eyre::Result<bool> {
+    Ok(read_source_and_hash(relative_path)?.0)
 }
 
 /// Checks whether the content has been modified by comparing its current hash with the stored hash.

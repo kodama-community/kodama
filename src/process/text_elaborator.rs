@@ -38,6 +38,7 @@ pub struct TextElaborator<'e, E> {
     events: E,
     pending: VecDeque<Event<'e>>,
     in_code_block: usize,
+    enabled: bool,
 }
 
 impl<E> TextElaborator<'_, E> {
@@ -46,7 +47,14 @@ impl<E> TextElaborator<'_, E> {
             events,
             pending: VecDeque::new(),
             in_code_block: 0,
+            enabled: true,
         }
+    }
+
+    /// Conditionally enable CJK language-span elaboration. When disabled the
+    /// event stream is passed through unchanged.
+    pub fn with_enabled(self, enabled: bool) -> Self {
+        Self { enabled, ..self }
     }
 }
 
@@ -54,6 +62,9 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TextElaborator<'e, E> {
     type Item = Event<'e>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if !self.enabled {
+            return self.events.next();
+        }
         if let Some(pending) = self.pending.pop_front() {
             return Some(pending);
         }
@@ -85,7 +96,11 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TextElaborator<'e, E> {
 
 impl<E> TextElaborator<'_, E> {
     fn enqueue_text(&mut self, text: &str) {
-        if !contains_cjk_related(text) {
+        // Fast path: ASCII can never contain CJK, so no lang-wrapping is
+        // possible. `is_ascii()` is a vectorized scan, far cheaper than
+        // classifying every char twice (as the previous `contains_cjk_related`
+        // pre-pass did).
+        if text.is_ascii() {
             self.pending.push_back(Event::Text(text.to_string().into()));
             return;
         }
@@ -163,12 +178,7 @@ impl<E> TextElaborator<'_, E> {
     }
 }
 
-fn contains_cjk_related(text: &str) -> bool {
-    text.chars().any(|ch| classify_char(ch) != CharClass::Other)
-}
-
-fn classify_char(ch: char) -> CharClass {
-    if is_japanese_char(ch) {
+fn classify_char(ch: char) -> CharClass {    if is_japanese_char(ch) {
         CharClass::Japanese
     } else if is_korean_char(ch) {
         CharClass::Korean
@@ -249,6 +259,22 @@ mod tests {
     }
 
     #[test]
+    fn test_ascii_text_is_single_event_without_wrapping() {
+        let events = vec![Event::Text("plain ascii, 1 2 3!".into())];
+        let actual = TextElaborator::process(events.into_iter()).collect::<Vec<_>>();
+        assert_eq!(actual.len(), 1);
+        assert_text(&actual[0], "plain ascii, 1 2 3!");
+    }
+
+    #[test]
+    fn test_non_cjk_non_ascii_text_is_not_wrapped() {
+        let events = vec![Event::Text("café — naïve".into())];
+        let actual = TextElaborator::process(events.into_iter()).collect::<Vec<_>>();
+        assert_eq!(actual.len(), 1);
+        assert_text(&actual[0], "café — naïve");
+    }
+
+    #[test]
     fn test_uses_japanese_lang_when_kana_present() {
         let events = vec![Event::Text("答えの潜む琥珀の太阳".into())];
         let actual = TextElaborator::process(events.into_iter()).collect::<Vec<_>>();
@@ -306,5 +332,15 @@ mod tests {
         ));
         assert_text(&actual[1], "中文");
         assert!(matches!(actual[2], Event::End(TagEnd::CodeBlock)));
+    }
+
+    #[test]
+    fn test_disabled_elaboration_passes_cjk_text_through_unchanged() {
+        let events = vec![Event::Text("中文".into())];
+        let actual = TextElaborator::process(events.into_iter())
+            .with_enabled(false)
+            .collect::<Vec<_>>();
+        assert_eq!(actual.len(), 1);
+        assert_text(&actual[0], "中文");
     }
 }

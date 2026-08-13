@@ -20,6 +20,9 @@ pub struct Build {
     pub asref: bool,
     pub output: String,
     pub edit: Option<String>,
+    /// Automatically wrap CJK text runs in `<span lang="zh|ja|ko">` so mixed
+    /// scripts select the correct font.
+    pub elaborate_cjk_text: bool,
 }
 
 impl Default for Build {
@@ -36,6 +39,7 @@ impl Default for Build {
             asref: false,
             output: "./publish".to_string(),
             edit: None,
+            elaborate_cjk_text: true,
         }
     }
 }

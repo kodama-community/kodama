@@ -4,37 +4,14 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8PathBuf;
 
-use crate::{
-    environment::verify_and_file_hash,
-    slug::{Ext, Slug},
-};
+use crate::slug::{Ext, Slug};
 
 use super::{state, DirtySet, Workspace};
 
 pub(super) fn source_relative_path(slug: Slug, ext: Ext) -> Utf8PathBuf {
     Utf8PathBuf::from(format!("{}.{}", slug, ext))
-}
-
-pub(super) fn is_source_modified(
-    relative_path: &Utf8Path,
-    dirty_paths: Option<&DirtySet>,
-) -> eyre::Result<bool> {
-    if *crate::cli::build::no_cache_enabled() {
-        return Ok(true);
-    }
-
-    if let Some(dirty_paths) = dirty_paths {
-        if dirty_paths.contains(relative_path) {
-            // Keep hash baseline updated for subsequent cold builds.
-            let _ = verify_and_file_hash(relative_path)?;
-            return Ok(true);
-        }
-        return Ok(false);
-    }
-
-    verify_and_file_hash(relative_path)
 }
 
 pub fn expand_dirty_paths(workspace: &Workspace, dirty_paths: &DirtySet) -> DirtySet {

@@ -149,6 +149,7 @@ fn parse_shallows_no_cache(
         .collect();
     entries.sort_by_key(|(slug, _)| slug.as_str());
 
+    crate::process::typst_image::begin_inline_batch();
     for (slug, ext) in entries {
         match compiler::parse_source_sections(slug, ext) {
             Ok(sections) => {
@@ -164,6 +165,12 @@ fn parse_shallows_no_cache(
                 "Failed to parse `{slug}.{ext}`: {err:#}"
             ))),
         }
+    }
+
+    // Compile inline formulas (reporting errors) and resolve placeholders.
+    let results = crate::process::typst_image::compile_inline_batch();
+    for section in shallows.values_mut() {
+        crate::process::typst_image::resolve_inline_typst_section(section, &results);
     }
 
     shallows

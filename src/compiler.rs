@@ -28,7 +28,7 @@ use std::{
 
 use camino::{Utf8Path, Utf8PathBuf};
 use eyre::{eyre, WrapErr};
-use parser::parse_markdown_sections;
+use parser::{parse_markdown_sections, parse_markdown_sections_from_source};
 use section::{HTMLContent, UnresolvedSection};
 use serde::{Deserialize, Serialize};
 use typst::parse_typst_sections;
@@ -38,14 +38,13 @@ use crate::{
     entry::{MetaData, KEY_INTERNAL_ANON_SUBTREE},
     environment,
     ordered_map::OrderedMap,
+    process::typst_image,
     slug::{Ext, Slug},
 };
 
 use self::{
     artifacts::{graph_snapshot, sync_optional_output},
-    incremental::{
-        affected_slugs_from_dirty, dirty_source_slugs, is_source_modified, source_relative_path,
-    },
+    incremental::{affected_slugs_from_dirty, dirty_source_slugs, source_relative_path},
     stale::cleanup_stale_slug_artifacts,
 };
 
@@ -216,13 +215,30 @@ pub(super) fn collect_shallows_with_sources(
     workspace: &Workspace,
     dirty_paths: Option<&DirtySet>,
 ) -> eyre::Result<(UnresolvedSections, SourceSectionsIndex)> {
+    typst_image::begin_inline_batch();
+
+    let mut pending: Vec<(Slug, ParsedSections, Option<Utf8PathBuf>)> = Vec::new();
+    for (&source_slug, &ext) in &workspace.slug_exts {
+        let (sections, cache_path) = load_shallow_sections(source_slug, ext, dirty_paths)?;
+        pending.push((source_slug, sections, cache_path));
+    }
+
+    // Inline typst formulas are compiled in a single batched invocation once
+    // every source has been parsed; only then can the placeholders be resolved
+    // and the entry caches written.
+    let results = typst_image::compile_inline_batch();
+
     let mut shallows = HashMap::new();
     let mut source_sections = HashMap::new();
+    for (source_slug, mut sections, cache_path) in pending {
+        for (_, section) in &mut sections {
+            typst_image::resolve_inline_typst_section(section, &results);
+        }
+        if let Some(entry_path) = cache_path {
+            write_entry_cache(entry_path.as_path(), &sections)?;
+        }
 
-    for (&source_slug, &ext) in &workspace.slug_exts {
-        let sections = load_shallow_sections(source_slug, ext, dirty_paths)?;
         let produced_slugs: Vec<Slug> = sections.iter().map(|(slug, _)| *slug).collect();
-
         for (slug, shallow) in sections {
             if shallows.insert(slug, shallow).is_some() {
                 return Err(eyre!(
@@ -232,7 +248,6 @@ pub(super) fn collect_shallows_with_sources(
                 ));
             }
         }
-
         source_sections.insert(source_slug, produced_slugs);
     }
 
@@ -240,10 +255,24 @@ pub(super) fn collect_shallows_with_sources(
 }
 
 pub(crate) fn parse_source_sections(source_slug: Slug, ext: Ext) -> eyre::Result<ParsedSections> {
-    let mut sections = match ext {
-        Ext::Markdown => parse_markdown_sections(source_slug)
+    parse_source_sections_with_content(source_slug, ext, None)
+}
+
+/// Parse a source file, optionally reusing content that has already been read
+/// for change-detection hashing (avoiding a second file read). For Typst
+/// sources the content is ignored because compilation happens via the external
+/// typst process.
+pub(crate) fn parse_source_sections_with_content(
+    source_slug: Slug,
+    ext: Ext,
+    content: Option<&str>,
+) -> eyre::Result<ParsedSections> {
+    let mut sections = match (ext, content) {
+        (Ext::Markdown, Some(content)) => parse_markdown_sections_from_source(content, source_slug)
             .wrap_err_with(|| eyre!("failed to parse markdown file `{source_slug}.{ext}`"))?,
-        Ext::Typst => parse_typst_sections(source_slug, environment::typst_root_dir())
+        (Ext::Markdown, None) => parse_markdown_sections(source_slug)
+            .wrap_err_with(|| eyre!("failed to parse markdown file `{source_slug}.{ext}`"))?,
+        (Ext::Typst, _) => parse_typst_sections(source_slug, environment::typst_root_dir())
             .wrap_err_with(|| eyre!("failed to parse typst file `{source_slug}.{ext}`"))?,
     };
 
@@ -300,21 +329,44 @@ fn load_shallow_sections(
     source_slug: Slug,
     ext: Ext,
     dirty_paths: Option<&DirtySet>,
-) -> eyre::Result<ParsedSections> {
+) -> eyre::Result<(ParsedSections, Option<Utf8PathBuf>)> {
     let relative_path = source_relative_path(source_slug, ext);
-    let is_modified = is_source_modified(relative_path.as_path(), dirty_paths)
-        .wrap_err_with(|| eyre!("failed to verify hash of `{relative_path}`"))?;
     let entry_path = environment::entry_file_path(&relative_path);
+
+    let no_cache = *crate::cli::build::no_cache_enabled();
+    let mut cached_content: Option<String> = None;
+    let is_modified = if no_cache {
+        true
+    } else if let Some(dirty_paths) = dirty_paths {
+        if dirty_paths.contains(&relative_path) {
+            // Keep the hash baseline updated; read once and reuse the content.
+            let (_, content) =
+                environment::read_source_and_hash(relative_path.as_path()).wrap_err_with(|| {
+                    eyre!("failed to verify hash of `{relative_path}`")
+                })?;
+            cached_content = Some(content);
+            true
+        } else {
+            false
+        }
+    } else {
+        let (modified, content) = environment::read_source_and_hash(relative_path.as_path())
+            .wrap_err_with(|| eyre!("failed to verify hash of `{relative_path}`"))?;
+        cached_content = Some(content);
+        modified
+    };
 
     if !is_modified && entry_path.exists() {
         let mut sections = read_entry_cache(entry_path.as_path(), source_slug)?;
         for (_, section) in &mut sections {
             section.metadata.compute_textual_attrs();
         }
-        return Ok(sections);
+        return Ok((sections, None));
     }
 
-    let sections = parse_source_sections(source_slug, ext)?;
-    write_entry_cache(entry_path.as_path(), &sections)?;
-    Ok(sections)
+    let sections = match cached_content {
+        Some(content) => parse_source_sections_with_content(source_slug, ext, Some(&content))?,
+        None => parse_source_sections(source_slug, ext)?,
+    };
+    Ok((sections, Some(entry_path)))
 }

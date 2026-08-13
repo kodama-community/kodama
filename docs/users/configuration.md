@@ -61,6 +61,7 @@ inline-css = false
 inline-script = false
 allow-unsafe-html = false
 asref = false
+elaborate-cjk-text = true
 output = "./publish"
 edit = "https://example.com/edit/"
 ```
@@ -74,6 +75,7 @@ edit = "https://example.com/edit/"
 - `inline-script`: embeds Kodama JavaScript into each page instead of writing `main.js`.
 - `allow-unsafe-html`: permits raw HTML from Markdown. Keep false for untrusted content.
 - `asref`: global default for whether local link targets are treated as references.
+- `elaborate-cjk-text`: wrap CJK text runs in `<span lang="zh|ja|ko">` so mixed scripts select the correct font. Disable for sites without CJK content to skip this processing stage.
 - `output`: publish output directory used by `kodama build`.
 - `edit`: optional edit URL prefix for generated edit links in publish builds.
 
