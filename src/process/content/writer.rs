@@ -252,11 +252,10 @@ where
                     escape_html(self.writer(), &id).unwrap();
                     self.write("\"");
                 }
-                let mut classes = classes.iter();
-                if let Some(class) = classes.next() {
+                if let Some((class, rest)) = classes.split_first() {
                     self.write(" class=\"");
                     escape_html(self.writer(), class).unwrap();
-                    for class in classes {
+                    for class in rest {
                         self.write(" ");
                         escape_html(self.writer(), class).unwrap();
                     }

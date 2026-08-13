@@ -157,12 +157,10 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
                             self.content = None;
                             continue;
                         };
-                        let args: Vec<&str> = inline_url.split("-").collect();
-                        let args = &args[1..];
-                        let mut auto_math_mode: bool = false;
-                        if args.contains(&"math") {
-                            auto_math_mode = true;
-                        }
+                        let auto_math_mode = inline_url
+                            .split('-')
+                            .skip(1)
+                            .any(|arg| arg == "math");
 
                         let mut inline_typst = self.content.take().unwrap_or_default();
                         inline_typst = smart_punctuation_reverse(&inline_typst);

@@ -125,7 +125,7 @@ pub(super) fn compile_from_shallows(
         Some(dirty_paths) => {
             let dirty_slugs = dirty_source_slugs(workspace, dirty_paths);
             if !stale_slugs.is_empty() {
-                all_slugs.clone()
+                all_slugs
             } else if dirty_slugs.is_empty() {
                 Vec::new()
             } else {
@@ -139,7 +139,7 @@ pub(super) fn compile_from_shallows(
                     .collect()
             }
         }
-        None => all_slugs.clone(),
+        None => all_slugs,
     };
 
     Writer::write_needed_slugs(slugs_to_write, &state)

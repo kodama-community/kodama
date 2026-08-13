@@ -12,7 +12,7 @@ use crate::{
     slug::Slug,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SectionOption {
     pub numbering: bool, // default: false
 

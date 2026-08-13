@@ -114,19 +114,11 @@ where
     fn get_str(&self, key: &str) -> Option<&String>;
     fn keys(&self) -> impl Iterator<Item = &String>;
 
-    /// Return all custom metadata keys.
-    fn etc_keys(&self) -> Vec<String> {
-        self.keys()
-            .filter(|s| is_custom_metadata(s))
-            .cloned()
-            .collect()
-    }
-
     /// Return all custom metadata values.
     fn etc(&self) -> Vec<V> {
-        self.etc_keys()
-            .into_iter()
-            .filter_map(|s| self.get(&s).cloned())
+        self.keys()
+            .filter(|s| is_custom_metadata(s))
+            .filter_map(|s| self.get(s).cloned())
             .collect()
     }
 

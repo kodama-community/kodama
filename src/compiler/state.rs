@@ -155,12 +155,12 @@ impl CompileState {
                             };
 
                             if embed_content.option.details_open {
-                                references.extend(refered.references.clone());
+                                references.extend(refered.references.iter().copied());
                             }
                             callback.insert_parent(child_slug, slug);
 
                             let mut child_section = refered.clone();
-                            child_section.option = embed_content.option.clone();
+                            child_section.option = embed_content.option;
                             if let Some(title) = &embed_content.title {
                                 child_section
                                     .metadata

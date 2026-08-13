@@ -586,7 +586,7 @@ pub(super) fn patch_root_subtree_embeds(
             continue;
         };
         embed.url = format!("/{}", spec.slug);
-        embed.option = spec.option.clone();
+        embed.option = spec.option;
         if let Some(title) = &spec.title {
             embed.title = Some(title.clone());
         }

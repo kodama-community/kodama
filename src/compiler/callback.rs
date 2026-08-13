@@ -24,7 +24,9 @@ impl Callback {
     }
 
     pub fn merge(&mut self, other: Callback) {
-        other.0.into_iter().for_each(|(s, t)| self.insert(s, t));
+        for (s, t) in other.0 {
+            self.insert(s, t);
+        }
     }
 
     pub fn insert(&mut self, child_slug: Slug, value: CallbackValue) {
