@@ -31,7 +31,7 @@ impl Taxon {
                 };
                 format!("{} {} ", text, numbering)
             }
-            None => self.text.to_string(),
+            None => self.text.clone(),
         }
     }
 

@@ -158,7 +158,7 @@ impl<E> TextElaborator<'_, E> {
                 ));
                 self.pending.push_back(Event::Text(text.into()));
                 self.pending
-                    .push_back(Event::InlineHtml("</span>".to_string().into()));
+                    .push_back(Event::InlineHtml("</span>".into()));
             }
             None => {
                 self.pending.push_back(Event::Text(text.into()));

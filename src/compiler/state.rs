@@ -130,7 +130,7 @@ impl CompileState {
 
         match &spanned.content {
             HTMLContent::Plain(html) => {
-                children.push(SectionContent::Plain(html.to_string()));
+                children.push(SectionContent::Plain(html.clone()));
             }
             HTMLContent::Lazy(lazy_contents) => {
                 let mut callback: Callback = Callback::new();
@@ -138,7 +138,7 @@ impl CompileState {
                 for lazy_content in lazy_contents {
                     match lazy_content {
                         LazyContent::Plain(html) => {
-                            children.push(SectionContent::Plain(html.to_string()));
+                            children.push(SectionContent::Plain(html.clone()));
                         }
                         LazyContent::Embed(embed_content) => {
                             let child_slug = subsection_slug(slug, &embed_content.url);
@@ -164,7 +164,7 @@ impl CompileState {
                             if let Some(title) = &embed_content.title {
                                 child_section
                                     .metadata
-                                    .update(KEY_TITLE.to_owned(), title.to_string())
+                                    .update(KEY_TITLE.to_owned(), title.clone())
                             };
                             children.push(SectionContent::Embed(child_section));
                         }
@@ -205,7 +205,7 @@ impl CompileState {
                                 &text,
                                 crate::recorder::State::LocalLink.strify(),
                             );
-                            children.push(SectionContent::Plain(html.to_string()));
+                            children.push(SectionContent::Plain(html));
                         }
                     }
                 }
@@ -230,7 +230,7 @@ impl CompileState {
             };
             if is_plain_metadata(key) {
                 if let Some(val) = value.as_string() {
-                    metadata.update(key.to_string(), val.to_owned());
+                    metadata.update(key.clone(), val.clone());
                 } else {
                     return Err(eyre!(
                         "metadata field `{}` in `{}` is expected to be plain text",
@@ -248,7 +248,7 @@ impl CompileState {
                     )
                 })?;
                 let html = compiled.spanned();
-                metadata.update(key.to_string(), html);
+                metadata.update(key.clone(), html);
             };
         }
 

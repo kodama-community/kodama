@@ -118,7 +118,7 @@ where
     fn etc_keys(&self) -> Vec<String> {
         self.keys()
             .filter(|s| is_custom_metadata(s))
-            .map(|s| s.to_string())
+            .cloned()
             .collect()
     }
 

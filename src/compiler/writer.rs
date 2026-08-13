@@ -251,7 +251,7 @@ impl Writer {
         content: &SectionContent,
     ) -> eyre::Result<String> {
         match content {
-            SectionContent::Plain(s) => Ok(s.to_string()),
+            SectionContent::Plain(s) => Ok(s.clone()),
             SectionContent::Embed(section) => Writer::footer_section_to_html(page_option, section),
         }
     }
@@ -365,7 +365,7 @@ impl Writer {
         state: &CompileState,
     ) -> eyre::Result<(String, String)> {
         match content {
-            SectionContent::Plain(s) => Ok((s.to_string(), String::new())),
+            SectionContent::Plain(s) => Ok((s.clone(), String::new())),
             SectionContent::Embed(section) => {
                 Writer::section_to_html(section, counter, false, hide_metadata, state)
             }

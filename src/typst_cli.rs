@@ -152,7 +152,7 @@ fn source_to_html(src: &str) -> eyre::Result<String> {
 
     let output = typst.wait_with_output()?;
     if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         color_print::ceprintln!(

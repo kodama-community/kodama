@@ -98,7 +98,7 @@ fn section_snippets() -> eyre::Result<()> {
                 .unwrap_or("")
                 .to_string();
 
-            Some((slug_str, Snippet::md(prefix.to_string(), body, description)))
+            Some((slug_str, Snippet::md(prefix, body, description)))
         })
         .collect();
 
