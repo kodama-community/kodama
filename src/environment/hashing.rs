@@ -2,53 +2,103 @@
 // Released under the GPL-3.0 license as described in the file LICENSE.
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
+use std::time::UNIX_EPOCH;
+
 use camino::Utf8Path;
 use eyre::{eyre, Context};
+use serde::{Deserialize, Serialize};
 
-/// Return is file modified i.e. is hash updated.
-pub fn is_hash_updated<P: AsRef<Utf8Path>>(content: &str, hash_path: P) -> (bool, u64) {
-    let mut hasher = std::hash::DefaultHasher::new();
-    std::hash::Hash::hash(&content, &mut hasher);
-    let current_hash = std::hash::Hasher::finish(&hasher);
+/// A source file's (mtime, size) snapshot, used for change detection without
+/// reading the file's content. Unlike a content hash it is cheap to obtain and
+/// its value is independent of the Rust compiler version.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SourceMeta {
+    /// Modified time in nanoseconds since the Unix epoch.
+    pub modified_ns: u128,
+    /// File size in bytes.
+    pub size: u64,
+}
 
-    let history_hash = std::fs::read_to_string(hash_path.as_ref())
+impl SourceMeta {
+    pub fn from_metadata(metadata: &std::fs::Metadata) -> Option<SourceMeta> {
+        let modified_ns = metadata
+            .modified()
+            .ok()?
+            .duration_since(UNIX_EPOCH)
+            .ok()?
+            .as_nanos();
+        Some(SourceMeta {
+            modified_ns,
+            size: metadata.len(),
+        })
+    }
+}
+
+/// Return the (mtime, size) snapshot of `path`, if it can be stat'ed.
+pub fn source_meta_of<P: AsRef<Utf8Path>>(path: P) -> Option<SourceMeta> {
+    std::fs::metadata(path.as_ref())
         .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(0); // no file / invalid hash: 0
-
-    (current_hash != history_hash, current_hash)
+        .and_then(|metadata| SourceMeta::from_metadata(&metadata))
 }
 
-/// Read a source file, update its change-detection hash baseline, and return
-/// whether it was modified together with its full content. Reads the file only
-/// once so callers can reuse the content for parsing instead of re-reading it.
-pub fn read_source_and_hash<P: AsRef<Utf8Path>>(relative_path: P) -> eyre::Result<(bool, String)> {
+/// Return the (mtime, size) snapshot of a source file under the trees directory.
+pub fn relative_source_meta<P: AsRef<Utf8Path>>(relative_path: P) -> Option<SourceMeta> {
+    source_meta_of(super::trees_dir().join(relative_path.as_ref()))
+}
+
+/// FNV-1a 64-bit. Deterministic and stable across Rust compiler versions,
+/// unlike `DefaultHasher`.
+fn fnv1a_64(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for &byte in bytes {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+
+fn read_meta_file(path: &Utf8Path) -> Option<SourceMeta> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let (modified_ns, size) = text.trim().split_once(':')?;
+    Some(SourceMeta {
+        modified_ns: modified_ns.parse().ok()?,
+        size: size.parse().ok()?,
+    })
+}
+
+fn write_meta_file(path: &Utf8Path, meta: SourceMeta) -> eyre::Result<()> {
+    std::fs::write(path, format!("{}:{}", meta.modified_ns, meta.size))
+        .wrap_err_with(|| eyre!("failed to write change-detection file `{}`", path))
+}
+
+/// Returns whether `relative_path`'s (mtime, size) differs from the last
+/// recorded baseline, updating the baseline in place. The baseline lives in the
+/// cache "hash" directory but holds a metadata snapshot, not a content hash.
+/// Used to skip regenerating outputs that derive from a source file without
+/// reading the source's content (e.g. cached typst HTML/SVG).
+pub fn file_meta_updated<P: AsRef<Utf8Path>>(relative_path: P) -> eyre::Result<bool> {
     if *crate::cli::build::no_cache_enabled() {
-        return Ok((true, String::new()));
+        return Ok(true);
     }
 
-    let root_dir = super::trees_dir();
-    let full_path = root_dir.join(&relative_path);
-    let hash_path = super::hash_file_path(&relative_path);
-
-    let content = std::fs::read_to_string(&full_path)
-        .wrap_err_with(|| eyre!("failed to read file `{}`", full_path))?;
-    let (is_modified, current_hash) = is_hash_updated(&content, &hash_path);
+    let relative_path = relative_path.as_ref();
+    let current = relative_source_meta(relative_path).ok_or_else(|| {
+        eyre!(
+            "failed to stat file `{}`",
+            super::trees_dir().join(relative_path)
+        )
+    })?;
+    let meta_path = super::hash_file_path(relative_path);
+    let is_modified = read_meta_file(meta_path.as_path()) != Some(current);
     if is_modified {
-        std::fs::write(&hash_path, current_hash.to_string())
-            .wrap_err_with(|| eyre!("failed to write file `{}`", hash_path))?;
+        write_meta_file(meta_path.as_path(), current)?;
     }
-    Ok((is_modified, content))
+    Ok(is_modified)
 }
 
-/// Checks whether the file has been modified by comparing its current hash with the stored hash.
-/// If the file is modified, updates the stored hash to reflect the latest state.
-pub fn verify_and_file_hash<P: AsRef<Utf8Path>>(relative_path: P) -> eyre::Result<bool> {
-    Ok(read_source_and_hash(relative_path)?.0)
-}
-
-/// Checks whether the content has been modified by comparing its current hash with the stored hash.
-/// If the content is modified, updates the stored hash to reflect the latest state.
+/// Checks whether the content's hash differs from the stored hash. If it does,
+/// updates the stored hash. The content is already in memory, so only the small
+/// hash file is touched on disk.
 pub fn verify_update_hash<P: AsRef<Utf8Path>>(
     path: P,
     content: &str,
@@ -58,11 +108,16 @@ pub fn verify_update_hash<P: AsRef<Utf8Path>>(
     }
 
     let hash_path = super::hash_file_path(path.as_ref());
-    let (is_modified, current_hash) = is_hash_updated(content, &hash_path);
+    let current_hash = fnv1a_64(content.as_bytes());
+    let history_hash = std::fs::read_to_string(hash_path.as_path())
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0); // no file / invalid hash: 0
+
+    let is_modified = current_hash != history_hash;
     if is_modified {
         std::fs::write(&hash_path, current_hash.to_string())?;
     }
-
     Ok(is_modified)
 }
 
@@ -73,38 +128,52 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_is_hash_updated_returns_modified_when_hash_file_missing() {
-        let root = crate::test_io::case_dir("env-hash-missing");
-        let hash_path = root.join("missing.hash");
-        let (is_modified, _) = is_hash_updated("content", hash_path.as_path());
-        assert!(is_modified);
+    fn test_source_meta_roundtrip_via_meta_file() {
+        let root = crate::test_io::case_dir("env-meta-roundtrip");
+        fs::create_dir_all(root.as_std_path()).unwrap();
+        let path = root.join("meta.txt");
+
+        let meta = SourceMeta {
+            modified_ns: 1_700_000_000_000_000_123,
+            size: 42,
+        };
+        write_meta_file(path.as_path(), meta).unwrap();
+        assert_eq!(read_meta_file(path.as_path()), Some(meta));
+
+        let _ = fs::remove_dir_all(root.as_std_path());
     }
 
     #[test]
-    fn test_is_hash_updated_returns_modified_for_invalid_hash_history() {
-        let root = crate::test_io::case_dir("env-hash-invalid");
+    fn test_read_meta_file_rejects_legacy_content_hash() {
+        let root = crate::test_io::case_dir("env-meta-legacy");
         fs::create_dir_all(root.as_std_path()).unwrap();
-        let hash_path = root.join("history.hash");
-        fs::write(hash_path.as_std_path(), "not-a-number").unwrap();
+        let path = root.join("meta.txt");
+        fs::write(path.as_std_path(), "1234567890").unwrap();
 
-        let (is_modified, _) = is_hash_updated("content", hash_path.as_path());
-        assert!(is_modified);
+        assert_eq!(read_meta_file(path.as_path()), None);
 
-        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(root.as_std_path());
     }
 
     #[test]
-    fn test_is_hash_updated_returns_unmodified_for_matching_hash() {
-        let root = crate::test_io::case_dir("env-hash-matching");
+    fn test_file_meta_updated_detects_changes() {
+        let root = crate::test_io::case_dir("env-meta-updated");
         fs::create_dir_all(root.as_std_path()).unwrap();
-        let hash_path = root.join("matching.hash");
-        let (_, current_hash) = is_hash_updated("content", hash_path.as_path());
-        fs::write(hash_path.as_std_path(), current_hash.to_string()).unwrap();
 
-        let (is_modified, _) = is_hash_updated("content", hash_path.as_path());
-        assert!(!is_modified);
+        super::super::with_test_environment(root.clone(), super::super::BuildMode::Publish, || {
+            let relative = "meta-tests/a.typst";
+            let full_path = super::super::trees_dir().join(relative);
+            fs::create_dir_all(full_path.parent().unwrap().as_std_path()).unwrap();
+            fs::write(full_path.as_std_path(), "v1").unwrap();
 
-        let _ = fs::remove_dir_all(root);
+            assert!(file_meta_updated(relative).unwrap());
+            assert!(!file_meta_updated(relative).unwrap());
+
+            fs::write(full_path.as_std_path(), "v22").unwrap();
+            assert!(file_meta_updated(relative).unwrap());
+        });
+
+        let _ = fs::remove_dir_all(root.as_std_path());
     }
 
     #[test]
@@ -122,6 +191,6 @@ mod tests {
             assert!(hash_path.exists());
         });
 
-        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(root.as_std_path());
     }
 }

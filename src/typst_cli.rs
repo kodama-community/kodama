@@ -8,7 +8,7 @@ use camino::Utf8Path;
 use eyre::{eyre, WrapErr};
 
 use crate::{
-    environment::{self, verify_and_file_hash},
+    environment::{self, file_meta_updated},
     html_flake, path_utils,
 };
 
@@ -16,7 +16,7 @@ pub fn write_to_inline_html<P: AsRef<Utf8Path>>(
     typst_path: P,
     html_path: P,
 ) -> eyre::Result<String> {
-    if !verify_and_file_hash(typst_path.as_ref())? && html_path.as_ref().exists() {
+    if !file_meta_updated(typst_path.as_ref())? && html_path.as_ref().exists() {
         let existed_html = fs::read_to_string(html_path.as_ref())?;
         if let Ok(existed_html) = html_to_body_content(&existed_html) {
             if *crate::cli::build::verbose_skip() {
@@ -265,7 +265,7 @@ pub fn write_svg<P: AsRef<Utf8Path>>(typst_path: P, svg_path: P) -> eyre::Result
     let typst_path = typst_path.as_ref();
     let svg_path = svg_path.as_ref();
 
-    if !verify_and_file_hash(typst_path)? && svg_path.exists() {
+    if !file_meta_updated(typst_path)? && svg_path.exists() {
         if *crate::cli::build::verbose_skip() {
             println!("Skip: {}", path_utils::pretty_path(typst_path));
         }

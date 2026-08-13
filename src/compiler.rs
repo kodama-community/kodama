@@ -29,7 +29,7 @@ use std::{
 
 use camino::{Utf8Path, Utf8PathBuf};
 use eyre::{eyre, WrapErr};
-use parser::{parse_markdown_sections, parse_markdown_sections_from_source};
+use parser::parse_markdown_sections;
 use section::{HTMLContent, UnresolvedSection};
 use serde::{Deserialize, Serialize};
 use typst::parse_typst_sections;
@@ -37,7 +37,7 @@ use writer::Writer;
 
 use crate::{
     entry::{MetaData, KEY_INTERNAL_ANON_SUBTREE},
-    environment,
+    environment::{self, SourceMeta},
     ordered_map::OrderedMap,
     slug::{Ext, Slug},
 };
@@ -77,12 +77,24 @@ impl Default for CompileOutputs {
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct CachedSourceEntry {
     pub sections: Vec<CachedSection>,
+    /// (mtime, size) of the source file when this entry was written, used for
+    /// change detection without reading the source content. `None` for legacy
+    /// entries, which are always reparsed.
+    #[serde(default)]
+    pub source_meta: Option<SourceMeta>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct CachedSection {
     pub slug: Slug,
     pub section: UnresolvedSection,
+}
+
+/// A freshly parsed source's entry-cache path plus the (mtime, size) snapshot
+/// captured at parse time, used to refresh the cache.
+pub(super) struct SourceCache {
+    pub entry_path: Utf8PathBuf,
+    pub source_meta: Option<SourceMeta>,
 }
 
 pub fn compile(
@@ -217,10 +229,10 @@ pub(super) fn collect_shallows_with_sources(
 ) -> eyre::Result<(UnresolvedSections, SourceSectionsIndex)> {
     inline_typst::begin_inline_batch();
 
-    let mut pending: Vec<(Slug, ParsedSections, Option<Utf8PathBuf>)> = Vec::new();
+    let mut pending: Vec<(Slug, ParsedSections, Option<SourceCache>)> = Vec::new();
     for (&source_slug, &ext) in &workspace.slug_exts {
-        let (sections, cache_path) = load_shallow_sections(source_slug, ext, dirty_paths)?;
-        pending.push((source_slug, sections, cache_path));
+        let (sections, cache) = load_shallow_sections(source_slug, ext, dirty_paths)?;
+        pending.push((source_slug, sections, cache));
     }
 
     // Inline typst formulas are compiled in a single batched invocation once
@@ -230,12 +242,16 @@ pub(super) fn collect_shallows_with_sources(
 
     let mut shallows = HashMap::new();
     let mut source_sections = HashMap::new();
-    for (source_slug, mut sections, cache_path) in pending {
+    for (source_slug, mut sections, cache) in pending {
         for (_, section) in &mut sections {
             inline_typst::resolve_inline_typst_section(section, &results);
         }
-        if let Some(entry_path) = cache_path {
-            write_entry_cache(entry_path.as_path(), &sections)?;
+        if let Some(cache) = cache {
+            write_entry_cache(
+                cache.entry_path.as_path(),
+                &sections,
+                cache.source_meta,
+            )?;
         }
 
         let produced_slugs: Vec<Slug> = sections.iter().map(|(slug, _)| *slug).collect();
@@ -254,25 +270,12 @@ pub(super) fn collect_shallows_with_sources(
     Ok((shallows, source_sections))
 }
 
+/// Parse a source file's sections.
 pub(crate) fn parse_source_sections(source_slug: Slug, ext: Ext) -> eyre::Result<ParsedSections> {
-    parse_source_sections_with_content(source_slug, ext, None)
-}
-
-/// Parse a source file, optionally reusing content that has already been read
-/// for change-detection hashing (avoiding a second file read). For Typst
-/// sources the content is ignored because compilation happens via the external
-/// typst process.
-pub(crate) fn parse_source_sections_with_content(
-    source_slug: Slug,
-    ext: Ext,
-    content: Option<&str>,
-) -> eyre::Result<ParsedSections> {
-    let mut sections = match (ext, content) {
-        (Ext::Markdown, Some(content)) => parse_markdown_sections_from_source(content, source_slug)
+    let mut sections = match ext {
+        Ext::Markdown => parse_markdown_sections(source_slug)
             .wrap_err_with(|| eyre!("failed to parse markdown file `{source_slug}.{ext}`"))?,
-        (Ext::Markdown, None) => parse_markdown_sections(source_slug)
-            .wrap_err_with(|| eyre!("failed to parse markdown file `{source_slug}.{ext}`"))?,
-        (Ext::Typst, _) => parse_typst_sections(source_slug, environment::typst_root_dir())
+        Ext::Typst => parse_typst_sections(source_slug, environment::typst_root_dir())
             .wrap_err_with(|| eyre!("failed to parse typst file `{source_slug}.{ext}`"))?,
     };
 
@@ -285,8 +288,10 @@ pub(crate) fn parse_source_sections_with_content(
 pub(super) fn write_entry_cache(
     entry_path: &Utf8Path,
     sections: &[(Slug, UnresolvedSection)],
+    source_meta: Option<SourceMeta>,
 ) -> eyre::Result<()> {
     let serialized = serde_json::to_string(&CachedSourceEntry {
+        source_meta,
         sections: sections
             .iter()
             .map(|(slug, section)| CachedSection {
@@ -301,18 +306,24 @@ pub(super) fn write_entry_cache(
     Ok(())
 }
 
-fn read_entry_cache(entry_path: &Utf8Path, source_slug: Slug) -> eyre::Result<ParsedSections> {
+fn read_entry_cache(
+    entry_path: &Utf8Path,
+    source_slug: Slug,
+) -> eyre::Result<(Option<SourceMeta>, ParsedSections)> {
     let entry_file = BufReader::new(
         File::open(entry_path)
             .wrap_err_with(|| eyre!("failed to open entry file at `{}`", entry_path))?,
     );
 
     if let Ok(cached) = serde_json::from_reader::<_, CachedSourceEntry>(entry_file) {
-        return Ok(cached
-            .sections
-            .into_iter()
-            .map(|cached| (cached.slug, cached.section))
-            .collect());
+        return Ok((
+            cached.source_meta,
+            cached
+                .sections
+                .into_iter()
+                .map(|cached| (cached.slug, cached.section))
+                .collect(),
+        ));
     }
 
     // Backward compatibility: older versions cached a single section value.
@@ -322,51 +333,42 @@ fn read_entry_cache(entry_path: &Utf8Path, source_slug: Slug) -> eyre::Result<Pa
     );
     let section: UnresolvedSection = serde_json::from_reader(entry_file)
         .wrap_err_with(|| eyre!("failed to deserialize entry file at `{}`", entry_path))?;
-    Ok(vec![(source_slug, section)])
+    Ok((None, vec![(source_slug, section)]))
 }
 
 fn load_shallow_sections(
     source_slug: Slug,
     ext: Ext,
     dirty_paths: Option<&DirtySet>,
-) -> eyre::Result<(ParsedSections, Option<Utf8PathBuf>)> {
+) -> eyre::Result<(ParsedSections, Option<SourceCache>)> {
     let relative_path = source_relative_path(source_slug, ext);
     let entry_path = environment::entry_file_path(&relative_path);
 
-    let no_cache = *crate::cli::build::no_cache_enabled();
-    let mut cached_content: Option<String> = None;
-    let is_modified = if no_cache {
-        true
-    } else if let Some(dirty_paths) = dirty_paths {
-        if dirty_paths.contains(&relative_path) {
-            // Keep the hash baseline updated; read once and reuse the content.
-            let (_, content) =
-                environment::read_source_and_hash(relative_path.as_path()).wrap_err_with(|| {
-                    eyre!("failed to verify hash of `{relative_path}`")
-                })?;
-            cached_content = Some(content);
-            true
-        } else {
-            false
-        }
-    } else {
-        let (modified, content) = environment::read_source_and_hash(relative_path.as_path())
-            .wrap_err_with(|| eyre!("failed to verify hash of `{relative_path}`"))?;
-        cached_content = Some(content);
-        modified
-    };
+    // Reparse when caching is disabled or the path is known to be dirty.
+    let must_reparse = *crate::cli::build::no_cache_enabled()
+        || dirty_paths.is_some_and(|d| d.contains(&relative_path));
 
-    if !is_modified && entry_path.exists() {
-        let mut sections = read_entry_cache(entry_path.as_path(), source_slug)?;
-        for (_, section) in &mut sections {
-            section.metadata.compute_textual_attrs();
+    let source_meta = environment::relative_source_meta(&relative_path);
+    if !must_reparse && source_meta.is_some() {
+        // Trust the cached entry when the source's (mtime, size) is unchanged.
+        // An unstat'able source is never trusted.
+        if let Ok((cached_meta, mut sections)) = read_entry_cache(entry_path.as_path(), source_slug)
+        {
+            if cached_meta == source_meta {
+                for (_, section) in &mut sections {
+                    section.metadata.compute_textual_attrs();
+                }
+                return Ok((sections, None));
+            }
         }
-        return Ok((sections, None));
     }
 
-    let sections = match cached_content {
-        Some(content) => parse_source_sections_with_content(source_slug, ext, Some(&content))?,
-        None => parse_source_sections(source_slug, ext)?,
-    };
-    Ok((sections, Some(entry_path)))
+    let sections = parse_source_sections(source_slug, ext)?;
+    Ok((
+        sections,
+        Some(SourceCache {
+            entry_path,
+            source_meta,
+        }),
+    ))
 }

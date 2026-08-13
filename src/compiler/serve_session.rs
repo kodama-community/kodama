@@ -4,7 +4,6 @@
 
 use std::collections::{HashMap, HashSet};
 
-use camino::Utf8PathBuf;
 use eyre::{eyre, WrapErr};
 
 use crate::{
@@ -17,9 +16,9 @@ use super::{
     compile_from_shallows,
     incremental::{dirty_source_slugs, source_relative_path},
     inline_typst,
-    parse_source_sections, parse_source_sections_with_content,
+    parse_source_sections,
     stale::cleanup_stale_slug_artifacts,
-    write_entry_cache, CompileOutputs, DirtySet, ParsedSections, Workspace,
+    write_entry_cache, CompileOutputs, DirtySet, ParsedSections, SourceCache, Workspace,
 };
 
 #[derive(Default)]
@@ -83,33 +82,33 @@ impl ServeCompileSession {
         let needs_full_write = parse_targets.iter().any(|slug| !dirty_slugs.contains(slug));
 
         inline_typst::begin_inline_batch();
-        let mut parsed: Vec<(Slug, Utf8PathBuf, ParsedSections)> = Vec::new();
+        let mut parsed: Vec<(Slug, ParsedSections, SourceCache)> = Vec::new();
         for slug in parse_targets {
             let Some(&ext) = workspace.slug_exts.get(&slug) else {
                 continue;
             };
             let relative_path = source_relative_path(slug, ext);
             let entry_path = environment::entry_file_path(relative_path.as_path());
-            let sections = if *crate::cli::build::no_cache_enabled() {
-                parse_source_sections(slug, ext)?
-            } else {
-                // Read once for the change-detection hash baseline and reuse the
-                // content for parsing.
-                let (_, content) = environment::read_source_and_hash(relative_path.as_path())
-                    .wrap_err_with(|| eyre!("failed to verify hash of `{relative_path}`"))?;
-                parse_source_sections_with_content(slug, ext, Some(&content))?
-            };
-            parsed.push((slug, entry_path, sections));
+            let sections = parse_source_sections(slug, ext)?;
+            let source_meta = environment::relative_source_meta(&relative_path);
+            parsed.push((
+                slug,
+                sections,
+                SourceCache {
+                    entry_path,
+                    source_meta,
+                },
+            ));
         }
 
         // Compile all freshly parsed inline formulas in one batch, then resolve
         // their placeholders and write the entry caches.
         let results = inline_typst::compile_inline_batch();
-        for (source_slug, entry_path, mut sections) in parsed {
+        for (source_slug, mut sections, cache) in parsed {
             for (_, section) in &mut sections {
                 inline_typst::resolve_inline_typst_section(section, &results);
             }
-            write_entry_cache(entry_path.as_path(), &sections)?;
+            write_entry_cache(cache.entry_path.as_path(), &sections, cache.source_meta)?;
 
             if let Some(previous_slugs) = self.source_sections.remove(&source_slug) {
                 for previous_slug in previous_slugs {
