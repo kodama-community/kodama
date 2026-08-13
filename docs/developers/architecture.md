@@ -78,9 +78,11 @@ Check mode does not write build artifacts.
 
 ### Serve
 
-Serve mode performs an initial build into the serve output directory, starts the configured static server, watches source, asset, config, theme, and import paths, then decides whether each change batch requires an incremental source rebuild, a global rewrite from memory, or a server restart.
+Serve mode performs an initial build into the serve output directory, optionally starts the configured static server, watches source, asset, config, theme, and import paths, then decides whether each change batch requires an incremental source rebuild, a global rewrite from memory, or a server restart.
 
 Serve mode defaults metadata and graph JSON off to keep preview output lightweight. It can enable them through output flags.
+
+Serve mode can run headlessly with `--no-server`, which builds and watches without spawning the configured static server process. `--print-json` requires `--no-server` and emits line-delimited JSON events (`ready`, `rebuilt`) on stdout for editor and tooling integrations, suppressing terminal escape sequences and watch status messages.
 
 ### Scaffolding and Upgrade
 

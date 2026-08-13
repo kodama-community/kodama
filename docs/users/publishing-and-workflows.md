@@ -98,6 +98,14 @@ edit = "https://example.com/edit/"
 edit = "vscode://file/"
 ```
 
+For editor and tooling integrations, run serve headlessly and consume line-delimited JSON events on stdout:
+
+```sh
+kodama serve --no-server --print-json
+```
+
+Each event carries the site root, config, output, and reload-marker paths, so an editor can rebuild-on-save and trigger reloads without managing the static server process.
+
 ## Troubleshooting
 
 Run `kodama check` when a build fails or generated links look wrong. It catches many graph and content issues before writing output.

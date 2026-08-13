@@ -6,7 +6,7 @@ Kodama is a single-command static site generator for interlinked notes. It reads
 
 - The `kodama` binary.
 - Typst installed and available on `PATH` when using `.typst` sections or Typst rendering features from Markdown.
-- A local static file server for `kodama serve`. The default serve command uses `miniserve`.
+- A local static file server for `kodama serve`. The default serve command uses `miniserve`. Not needed when running `kodama serve --no-server`.
 
 ## Create a Site
 
@@ -82,6 +82,20 @@ Print watch dirty-path statistics:
 ```sh
 kodama serve --watch-stats
 ```
+
+Build and watch without starting the configured static server (headless watch-only workflow):
+
+```sh
+kodama serve --no-server
+```
+
+Emit line-delimited JSON events (`ready`, `rebuilt`) for editor and tooling integrations:
+
+```sh
+kodama serve --no-server --print-json
+```
+
+`--print-json` requires `--no-server` so stdout remains machine-readable.
 
 ## Validate a Site
 
