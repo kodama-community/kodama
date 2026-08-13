@@ -93,14 +93,14 @@ fn parse_month_token(token: &str) -> Option<u8> {
 }
 
 fn parse_u8_prefix(token: &str) -> Option<u8> {
-    let len = token.chars().take_while(|ch| ch.is_ascii_digit()).count();
-    (len > 0).then(|| token[..len].parse::<u8>().ok()).flatten()
+    let len = token.bytes().take_while(u8::is_ascii_digit).count();
+    (len > 0).then(|| token[..len].parse().ok()).flatten()
 }
 
 fn parse_u32_prefix(token: &str) -> Option<u32> {
-    let len = token.chars().take_while(|ch| ch.is_ascii_digit()).count();
+    let len = token.bytes().take_while(u8::is_ascii_digit).count();
     (len > 0)
-        .then(|| token[..len].parse::<u32>().ok())
+        .then(|| token[..len].parse().ok())
         .flatten()
 }
 

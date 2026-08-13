@@ -158,7 +158,7 @@ fn collect_reference_definition_blocks(source: &str) -> Vec<(String, String)> {
 }
 
 fn parse_reference_definition_label(line: &str) -> Option<String> {
-    let leading_spaces = line.chars().take_while(|c| *c == ' ').count();
+    let leading_spaces = line.bytes().take_while(|&c| c == b' ').count();
     if leading_spaces > 3 {
         return None;
     }
@@ -363,9 +363,9 @@ fn parse_open_tag(source: &str, start: usize) -> Option<OpenTag> {
     }
 
     let mut self_closing = false;
-    if inner.ends_with('/') {
+    if let Some(trimmed) = inner.strip_suffix('/') {
         self_closing = true;
-        inner = inner[..inner.len() - 1].trim_end();
+        inner = trimmed.trim_end();
     }
 
     let (name, attrs) = split_tag_name_and_attrs(inner)?;

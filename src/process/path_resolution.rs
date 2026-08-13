@@ -34,8 +34,8 @@ pub(crate) fn relocate_trees_path_with_trees_root(
     }
 
     let trees = format!("/{trees_dir_without_root}");
-    if path.starts_with(&trees) {
-        path[trees.len()..].to_string()
+    if let Some(stripped) = path.strip_prefix(&trees) {
+        stripped.to_string()
     } else {
         path.to_string()
     }

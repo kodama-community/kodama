@@ -67,7 +67,7 @@ fn parse_metadata(s: &str, metadata: &mut OrderedMap<String, HTMLContent>) -> ey
 
     for (line_no, s) in s.lines().enumerate() {
         if !s.trim().is_empty() {
-            let pos = s.find(':').ok_or_else(|| {
+            let (key, val) = s.split_once(':').ok_or_else(|| {
                 eyre!(
                     "invalid metadata in `{}` at line {}: expected `name: value`, found `{}`",
                     current_slug,
@@ -75,8 +75,8 @@ fn parse_metadata(s: &str, metadata: &mut OrderedMap<String, HTMLContent>) -> ey
                     s
                 )
             })?;
-            let key = s[0..pos].trim();
-            let val = s[pos + 1..].trim();
+            let key = key.trim();
+            let val = val.trim();
 
             let parsed = parse_metadata_value(key, val, current_slug);
             metadata.insert(key.to_string(), parsed);

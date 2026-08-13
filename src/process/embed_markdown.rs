@@ -289,20 +289,19 @@ fn parse_embed_text(embed_text: &str) -> (SectionOption, String) {
     let mut details_open = true;
     let mut catalog = true;
 
-    let mut index = 0;
-    let chars = embed_text.chars();
-    for curr in chars {
+    let mut end = 0;
+    for (idx, curr) in embed_text.char_indices() {
         match curr {
             '+' => numbering = true,
             '-' => details_open = false,
             '.' => catalog = false,
             _ => break,
         }
-        index += 1;
+        end = idx + curr.len_utf8();
     }
 
     let option = SectionOption::new(numbering, details_open, catalog);
-    let inline_title = &embed_text[index..];
+    let inline_title = &embed_text[end..];
     (option, inline_title.to_owned())
 }
 
