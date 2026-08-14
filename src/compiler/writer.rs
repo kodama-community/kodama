@@ -147,7 +147,11 @@ impl Writer {
                     );
                     continue;
                 };
-                content.push_str(&Writer::footer_section_to_html(footer_mode, section)?);
+                content.push_str(&Writer::footer_section_to_html(
+                    state,
+                    footer_mode,
+                    section,
+                )?);
             }
 
             if content.is_empty() {
@@ -172,7 +176,11 @@ impl Writer {
                     );
                     continue;
                 };
-                content.push_str(&Writer::footer_section_to_html(footer_mode, section)?);
+                content.push_str(&Writer::footer_section_to_html(
+                    state,
+                    footer_mode,
+                    section,
+                )?);
             }
 
             if content.is_empty() {
@@ -234,33 +242,51 @@ impl Writer {
     }
 
     fn footer_content_to_html(
+        state: &CompileState,
         page_option: Option<FooterMode>,
         content: &SectionContent,
     ) -> eyre::Result<String> {
         match content {
             SectionContent::Plain(s) => Ok(s.clone()),
-            SectionContent::Embed(section) => Writer::footer_section_to_html(page_option, section),
+            SectionContent::Embed(section) => {
+                Writer::footer_section_to_html(state, page_option, section)
+            }
         }
     }
 
     fn footer_section_to_html(
+        state: &CompileState,
         page_option: Option<FooterMode>,
         section: &Section,
     ) -> eyre::Result<String> {
         let footer_mode = page_option.unwrap_or(environment::footer_mode());
+        let key = (section.slug()?, footer_mode);
+        let cached = state
+            .footer_memo
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(&key)
+            .cloned();
+        if let Some(html) = cached {
+            return Ok(html);
+        }
 
-        match footer_mode {
+        let html = match footer_mode {
             FooterMode::Link => {
                 let summary = section.metadata.to_header(None, None)?;
                 let data_taxon = section.metadata.data_taxon().unwrap_or("");
-                Ok(format!(
+                format!(
                     r#"<section class="block" data-taxon="{data_taxon}" style="margin-bottom: 0.4em;">{summary}</section>"#
-                ))
+                )
             }
             FooterMode::Embed => {
                 let mut contents = String::new();
                 for content in &section.children {
-                    contents.push_str(&Writer::footer_content_to_html(page_option, content)?);
+                    contents.push_str(&Writer::footer_content_to_html(
+                        state,
+                        page_option,
+                        content,
+                    )?);
                 }
                 html_flake::html_article_inner(
                     &section.metadata,
@@ -269,9 +295,16 @@ impl Writer {
                     false,
                     None,
                     None,
-                )
+                )?
             }
-        }
+        };
+
+        state
+            .footer_memo
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(key, html.clone());
+        Ok(html)
     }
 
     pub fn section_to_html(
@@ -544,6 +577,58 @@ mod tests {
                 slugs,
                 vec![Slug::new("old"), Slug::new("mid"), Slug::new("new")]
             );
+        });
+    }
+
+    #[test]
+    fn test_footer_section_to_html_is_memoized() {
+        with_test_env(|| {
+            let mut shallows = HashMap::new();
+            shallows.insert(Slug::new("a"), shallow_section("a", "A"));
+
+            let state = compile_all(&shallows).unwrap();
+            let section = state.compiled().get(&Slug::new("a")).unwrap();
+
+            let first = Writer::footer_section_to_html(&state, None, section).unwrap();
+
+            let memo = state.footer_memo.lock().unwrap();
+            assert!(memo.contains_key(&(Slug::new("a"), FooterMode::Link)));
+            assert_eq!(memo.len(), 1);
+            drop(memo);
+
+            let second = Writer::footer_section_to_html(&state, None, section).unwrap();
+            assert_eq!(first, second);
+        });
+    }
+
+    #[test]
+    fn test_footer_embed_mode_memoizes_nested_sections() {
+        with_test_env(|| {
+            let mut shallows = HashMap::new();
+            shallows.insert(
+                Slug::new("a"),
+                shallow_section_with_content(
+                    "a",
+                    "A",
+                    HTMLContent::Lazy(vec![LazyContent::Embed(EmbedContent {
+                        url: "/b".to_string(),
+                        title: None,
+                        option: SectionOption::default(),
+                    })]),
+                ),
+            );
+            shallows.insert(Slug::new("b"), shallow_section("b", "B"));
+
+            let state = compile_all(&shallows).unwrap();
+            let section = state.compiled().get(&Slug::new("a")).unwrap();
+
+            let html =
+                Writer::footer_section_to_html(&state, Some(FooterMode::Embed), section).unwrap();
+            assert!(html.contains("B"));
+
+            let memo = state.footer_memo.lock().unwrap();
+            assert!(memo.contains_key(&(Slug::new("a"), FooterMode::Embed)));
+            assert!(memo.contains_key(&(Slug::new("b"), FooterMode::Embed)));
         });
     }
 }

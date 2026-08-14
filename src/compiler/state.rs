@@ -3,9 +3,13 @@
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
 use eyre::eyre;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    sync::Mutex,
+};
 
 use crate::{
+    config::build::FooterMode,
     entry::{
         is_plain_metadata, EntryMetaData, HTMLMetaData, MetaData, KEY_EXT,
         KEY_INTERNAL_ANON_SUBTREE, KEY_SLUG, KEY_TITLE,
@@ -31,6 +35,11 @@ pub struct CompileState {
     callback: Callback,
     visiting: HashSet<Slug>,
     compile_stack: Vec<Slug>,
+    /// Memoized footer HTML per (referenced section, footer mode). Sections are
+    /// immutable once compiled, so a section referenced by many pages is
+    /// rendered once instead of once per reference. Scoped to this build's
+    /// state. A `Mutex` keeps `CompileState` `Sync` for parallel writing.
+    pub(super) footer_memo: Mutex<HashMap<(Slug, FooterMode), String>>,
 }
 
 type UnresolvedSections = HashMap<Slug, UnresolvedSection>;
@@ -78,6 +87,7 @@ impl CompileState {
             callback: Callback::new(),
             visiting: HashSet::new(),
             compile_stack: Vec::new(),
+            footer_memo: Mutex::new(HashMap::new()),
         }
     }
 
