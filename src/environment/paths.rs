@@ -24,7 +24,7 @@ pub fn full_url<P: AsRef<Utf8Path>>(path: P) -> String {
 }
 
 pub fn full_html_url(slug: Slug) -> String {
-    let pretty_urls = super::with_config(|cfg| cfg.build.pretty_urls);
+    let pretty_urls = super::pretty_urls();
     let page_suffix = super::to_page_suffix(pretty_urls);
     full_url(format!("{}{}", slug, page_suffix))
 }

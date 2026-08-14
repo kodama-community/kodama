@@ -4,12 +4,12 @@
 
 use camino::{Utf8Path, Utf8PathBuf};
 
-use crate::config::{build::FooterMode, kodama, toc};
+use crate::config::{build::FooterMode, toc};
 
-use super::{with_config, with_environment, BuildMode, CACHE_DIR_NAME};
+use super::with_config;
 
 pub fn is_short_slug() -> bool {
-    with_config(|cfg| cfg.build.short_slug)
+    super::derived_snapshot().short_slug
 }
 
 pub fn typst_root_dir() -> Utf8PathBuf {
@@ -17,15 +17,15 @@ pub fn typst_root_dir() -> Utf8PathBuf {
 }
 
 pub fn trees_dir_without_root() -> String {
-    with_config(|cfg| cfg.kodama.trees.clone())
+    super::derived_snapshot().trees_dir_without_root.clone()
 }
 
 pub fn assets_dir_without_root() -> String {
-    with_config(|cfg| cfg.kodama.assets.clone())
+    super::derived_snapshot().assets_dir_without_root.clone()
 }
 
 pub fn trees_dir() -> Utf8PathBuf {
-    super::root_dir().join(trees_dir_without_root())
+    super::derived_snapshot().trees_dir.clone()
 }
 
 pub fn theme_paths() -> Vec<Utf8PathBuf> {
@@ -44,13 +44,7 @@ pub fn theme_lock() -> bool {
 }
 
 pub fn output_dir() -> Utf8PathBuf {
-    with_environment(|env| {
-        let output = match env.build_mode {
-            BuildMode::Publish | BuildMode::Check => env.config.build.output.clone(),
-            BuildMode::Serve => env.config.serve.output.clone(),
-        };
-        env.root.join(output)
-    })
+    super::derived_snapshot().output_dir.clone()
 }
 
 pub fn indexes_path(output_dir: &Utf8Path) -> Utf8PathBuf {
@@ -74,10 +68,11 @@ pub fn base_url_raw() -> String {
 }
 
 pub fn base_url() -> String {
-    with_environment(|env| match env.build_mode {
-        BuildMode::Publish | BuildMode::Check => env.config.kodama.base_url.clone(),
-        BuildMode::Serve => kodama::DEFAULT_BASE_URL.to_string(),
-    })
+    super::derived_snapshot().base_url.clone()
+}
+
+pub fn pretty_urls() -> bool {
+    super::derived_snapshot().pretty_urls
 }
 
 pub fn is_toc_left() -> bool {
@@ -161,9 +156,9 @@ pub fn serve_command() -> Vec<String> {
 }
 
 pub fn get_cache_dir() -> Utf8PathBuf {
-    super::root_dir().join(CACHE_DIR_NAME)
+    super::derived_snapshot().cache_dir.clone()
 }
 
 pub fn assets_dir() -> Utf8PathBuf {
-    super::root_dir().join(assets_dir_without_root())
+    super::derived_snapshot().assets_dir.clone()
 }

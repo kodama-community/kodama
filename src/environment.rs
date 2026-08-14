@@ -2,7 +2,7 @@
 // Released under the GPL-3.0 license as described in the file LICENSE.
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
-use std::sync::{OnceLock, RwLock};
+use std::sync::{Arc, LazyLock, OnceLock, RwLock};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use eyre::eyre;
@@ -24,7 +24,7 @@ pub use config_access::{
     deploy_edit_url, editor_url, elaborate_cjk_text, feed_path, footer_mode, footer_sort_by,
     get_cache_dir, get_edit_text, get_footer_backlinks_text, get_footer_references_text,
     get_toc_text, graph_path, indexes_path, inline_css, inline_script, is_short_slug, is_toc_left,
-    is_toc_mobile_sticky, is_toc_sticky, output_dir, publish_rss, reload_marker_path,
+    is_toc_mobile_sticky, is_toc_sticky, output_dir, pretty_urls, publish_rss, reload_marker_path,
     serve_command, theme_lock, theme_paths, toc_max_width, trees_dir, trees_dir_without_root,
     typst_root_dir,
 };
@@ -97,8 +97,73 @@ fn environment_lock(warn_if_uninitialized: bool) -> &'static RwLock<Environment>
 }
 
 fn update_environment(environment: Environment) {
+    let derived = compute_derived(&environment);
     let lock = environment_lock(false);
     write_environment(lock, environment);
+    set_derived(derived);
+}
+
+/// Derived, hot-path values cached from the current [`Environment`]. The
+/// environment only changes via [`update_environment`] (startup, config reload,
+/// tests), so these are repopulated there and served to every hot path
+/// (URL/link/output path resolution) as an `Arc` snapshot instead of taking the
+/// environment read lock and re-deriving per call.
+#[derive(Debug)]
+struct DerivedCache {
+    root_dir: Utf8PathBuf,
+    trees_dir: Utf8PathBuf,
+    trees_dir_without_root: String,
+    assets_dir: Utf8PathBuf,
+    assets_dir_without_root: String,
+    cache_dir: Utf8PathBuf,
+    output_dir: Utf8PathBuf,
+    base_url: String,
+    pretty_urls: bool,
+    short_slug: bool,
+}
+
+fn compute_derived(env: &Environment) -> DerivedCache {
+    let root = env.root.clone();
+    let output = match env.build_mode {
+        BuildMode::Publish | BuildMode::Check => env.config.build.output.clone(),
+        BuildMode::Serve => env.config.serve.output.clone(),
+    };
+    let base_url = match env.build_mode {
+        BuildMode::Publish | BuildMode::Check => env.config.kodama.base_url.clone(),
+        BuildMode::Serve => crate::config::kodama::DEFAULT_BASE_URL.to_string(),
+    };
+    DerivedCache {
+        root_dir: root.clone(),
+        trees_dir: root.join(&env.config.kodama.trees),
+        trees_dir_without_root: env.config.kodama.trees.clone(),
+        assets_dir: root.join(&env.config.kodama.assets),
+        assets_dir_without_root: env.config.kodama.assets.clone(),
+        cache_dir: root.join(CACHE_DIR_NAME),
+        output_dir: root.join(output),
+        base_url,
+        pretty_urls: env.config.build.pretty_urls,
+        short_slug: env.config.build.short_slug,
+    }
+}
+
+static DERIVED_CACHE: LazyLock<RwLock<Arc<DerivedCache>>> =
+    LazyLock::new(|| RwLock::new(Arc::new(compute_derived(&default_environment()))));
+
+/// Cheap, owned snapshot of the cached derived values. The lock is released
+/// before the caller clones the fields, so hot paths never hold it.
+fn derived_snapshot() -> Arc<DerivedCache> {
+    match DERIVED_CACHE.read() {
+        Ok(cache) => Arc::clone(&cache),
+        Err(poisoned) => Arc::clone(&poisoned.into_inner()),
+    }
+}
+
+fn set_derived(derived: DerivedCache) {
+    let mut cache = match DERIVED_CACHE.write() {
+        Ok(cache) => cache,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    *cache = Arc::new(derived);
 }
 
 fn with_environment<R>(f: impl FnOnce(&Environment) -> R) -> R {
@@ -178,7 +243,7 @@ pub fn to_page_suffix(pretty_urls: bool) -> String {
 }
 
 pub fn root_dir() -> Utf8PathBuf {
-    with_environment(|env| env.root.clone())
+    derived_snapshot().root_dir.clone()
 }
 
 pub fn config_file() -> Utf8PathBuf {
@@ -262,5 +327,49 @@ mod tests {
         let (root, mode) = read_environment(&lock, |env| (env.root.clone(), env.build_mode));
         assert_eq!(root, Utf8PathBuf::from("site"));
         assert!(matches!(mode, BuildMode::Serve));
+    }
+
+    #[test]
+    fn test_derived_cache_refreshes_on_environment_update() {
+        let first = crate::test_io::case_dir("env-derived-first");
+        super::with_test_environment(first.clone(), BuildMode::Publish, || {
+            assert_eq!(root_dir(), first);
+            assert_eq!(
+                trees_dir(),
+                first.join(crate::config::kodama::DEFAULT_SOURCE_DIR)
+            );
+            assert_eq!(get_cache_dir(), first.join(CACHE_DIR_NAME));
+            assert_eq!(
+                base_url(),
+                crate::config::kodama::DEFAULT_BASE_URL.to_string()
+            );
+        });
+
+        let second = crate::test_io::case_dir("env-derived-second");
+        super::with_test_environment(second.clone(), BuildMode::Publish, || {
+            assert_eq!(root_dir(), second);
+            assert_eq!(
+                trees_dir(),
+                second.join(crate::config::kodama::DEFAULT_SOURCE_DIR)
+            );
+            assert_eq!(get_cache_dir(), second.join(CACHE_DIR_NAME));
+        });
+
+        let _ = std::fs::remove_dir_all(first.as_std_path());
+        let _ = std::fs::remove_dir_all(second.as_std_path());
+    }
+
+    #[test]
+    fn test_derived_cache_reflects_serve_build_mode() {
+        let root = crate::test_io::case_dir("env-derived-serve");
+        super::with_test_environment(root.clone(), BuildMode::Serve, || {
+            assert_eq!(
+                base_url(),
+                crate::config::kodama::DEFAULT_BASE_URL.to_string()
+            );
+            assert_eq!(output_dir(), root.join("./.cache/publish"));
+        });
+
+        let _ = std::fs::remove_dir_all(root.as_std_path());
     }
 }
