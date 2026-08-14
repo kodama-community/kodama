@@ -5,7 +5,6 @@
 use std::collections::{HashMap, HashSet};
 
 use eyre::{eyre, WrapErr};
-use itertools::Itertools;
 
 use crate::{
     entry::{
@@ -176,7 +175,11 @@ fn parse_reference_definition_label(line: &str) -> Option<String> {
 }
 
 fn normalize_reference_label(label: &str) -> String {
-    label.split_whitespace().join(" ").to_ascii_lowercase()
+    label
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
 }
 
 fn is_reference_definition_continuation(line: &str) -> bool {

@@ -3,14 +3,56 @@
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
 use eyre::eyre;
-use regex_lite::Regex;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, mem, sync::LazyLock};
+use std::{collections::HashSet, mem};
 
 use crate::{
     entry::{EntryMetaData, HTMLMetaData, MetaData},
     slug::Slug,
 };
+
+/// Strip HTML tags from `s`, mirroring the tag shape
+/// `<[A-Za-z]+ .../>|</[A-Za-z]+>` (tags starting with a letter, with optional
+/// attributes and a quoted attribute value may contain `>`). Non-tag text and
+/// angle brackets in text (e.g. `<1>`, `<!-- -->`) are preserved. A single
+/// pass, no allocations beyond the returned string.
+fn strip_tags(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(bytes.len());
+    let mut i = 0;
+    let mut in_tag = false;
+    let mut in_quote = false;
+    while i < bytes.len() {
+        let byte = bytes[i];
+        if in_tag {
+            match byte {
+                b'"' => in_quote = !in_quote,
+                b'\\' if in_quote => {
+                    i += 1; // skip the escaped byte; continuation bytes never match `"`, `>`, `\`
+                }
+                b'>' if !in_quote => in_tag = false,
+                _ => {}
+            }
+            i += 1;
+            continue;
+        }
+
+        let is_open = bytes.get(i + 1).is_some_and(u8::is_ascii_alphabetic);
+        let is_close = bytes.get(i + 1) == Some(&b'/')
+            && bytes.get(i + 2).is_some_and(u8::is_ascii_alphabetic);
+        if byte == b'<' && (is_open || is_close) {
+            in_tag = true;
+            in_quote = false;
+            i += 1;
+            continue;
+        }
+
+        let ch = s[i..].chars().next().expect("byte is within a char boundary");
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SectionOption {
@@ -85,40 +127,23 @@ impl HTMLContent {
     }
 
     pub fn remove_all_tags(&self) -> String {
-        static RE_TAGS: LazyLock<Regex> = LazyLock::new(|| {
-            let attrs = r#"(\s+[a-zA-Z-]+(="([^"\\]|\\[\s\S])*")?)*"#;
-            Regex::new(&format!(r#"<[A-Za-z]+{}\s*/?>|</[A-Za-z]+>"#, attrs)).unwrap()
-        });
-
-        let remove_tag = |s| {
-            let mut cursor = 0;
-            let mut string = String::new();
-            for capture in RE_TAGS.captures_iter(s) {
-                let all = capture.get(0).unwrap();
-                string.push_str(&s[cursor..all.start()]);
-                cursor = all.end();
-            }
-            string.push_str(&s[cursor..]);
-            string
-        };
-
         match self {
-            HTMLContent::Plain(s) => remove_tag(s),
+            HTMLContent::Plain(s) => strip_tags(s),
             HTMLContent::Lazy(contents) => {
                 let mut str = String::new();
                 for content in contents {
                     let s = match content {
-                        LazyContent::Plain(s) => remove_tag(s),
+                        LazyContent::Plain(s) => strip_tags(s),
                         LazyContent::Embed(embed) => embed
                             .title
                             .as_ref()
-                            .map(|s| remove_tag(s))
+                            .map(|s| strip_tags(s))
                             .unwrap_or_default(),
 
                         LazyContent::Local(local) => local
                             .text
                             .as_ref()
-                            .map(|s| remove_tag(s))
+                            .map(|s| strip_tags(s))
                             .unwrap_or_default(),
                     };
                     str.push_str(&s);
@@ -239,5 +264,44 @@ impl Section {
             }
         }
         html
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_tags;
+
+    #[test]
+    fn test_strip_tags_removes_common_tags() {
+        assert_eq!(
+            strip_tags("<p>hello <b>world</b></p>"),
+            "hello world"
+        );
+        assert_eq!(strip_tags("<a href=\"/x\">link</a>"), "link");
+        assert_eq!(strip_tags("<img src=\"a.png\" />"), "");
+        assert_eq!(strip_tags("</span>"), "");
+    }
+
+    #[test]
+    fn test_strip_tags_keeps_non_tag_angle_brackets() {
+        assert_eq!(strip_tags("a < b > c"), "a < b > c");
+        assert_eq!(strip_tags("<!-- comment -->"), "<!-- comment -->");
+        assert_eq!(strip_tags("<1> not a tag"), "<1> not a tag");
+    }
+
+    #[test]
+    fn test_strip_tags_handles_quoted_angle_brackets_and_escapes() {
+        assert_eq!(
+            strip_tags(r#"<div data="a>b" class="x">text</div>"#),
+            "text"
+        );
+        assert_eq!(strip_tags(r#"<div title="say \"hi\">">x</div>"#), "x");
+    }
+
+    #[test]
+    fn test_strip_tags_preserves_unicode_and_empty() {
+        assert_eq!(strip_tags("<p>中文 café</p>"), "中文 café");
+        assert_eq!(strip_tags(""), "");
+        assert_eq!(strip_tags("plain text"), "plain text");
     }
 }

@@ -8,7 +8,6 @@ use std::{
 };
 
 use eyre::{eyre, WrapErr};
-use itertools::Itertools;
 use pulldown_cmark::Options;
 
 use crate::{
@@ -134,17 +133,33 @@ pub(super) fn parse_markdown_source(source: &str, slug: Slug) -> eyre::Result<Un
     let events = pulldown_cmark::Parser::new_ext(source, OPTIONS);
     let events = filter_raw_html(events, environment::allow_unsafe_html());
 
-    let content = Metadata::process(events, &mut metadata)
-        .process_results(|events| {
-            let events = Footnote::process(events, slug);
-            let events = Figure::process(events);
-            let events = TypstImage::process(events, slug);
-            let events =
-                TextElaborator::process(events).with_enabled(environment::elaborate_cjk_text());
-            let events = Embed::process(events, slug);
-            normalize_html_content(to_contents(events))
-        })
-        .wrap_err("failed to parse metadata")?;
+    // Short-circuit on the first metadata error while keeping the stream lazy:
+    // once an error is recorded, no further events are emitted downstream.
+    let mut metadata_error: Option<eyre::Error> = None;
+    let events = Metadata::process(events, &mut metadata).filter_map(|event| {
+        if metadata_error.is_some() {
+            return None;
+        }
+        match event {
+            Ok(event) => Some(event),
+            Err(err) => {
+                metadata_error = Some(err);
+                None
+            }
+        }
+    });
+    let content = {
+        let events = Footnote::process(events, slug);
+        let events = Figure::process(events);
+        let events = TypstImage::process(events, slug);
+        let events =
+            TextElaborator::process(events).with_enabled(environment::elaborate_cjk_text());
+        let events = Embed::process(events, slug);
+        normalize_html_content(to_contents(events))
+    };
+    if let Some(err) = metadata_error {
+        return Err(err).wrap_err("failed to parse metadata");
+    }
 
     let metadata = HTMLMetaData(metadata);
     Ok(UnresolvedSection { metadata, content })
