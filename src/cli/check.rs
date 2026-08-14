@@ -8,12 +8,12 @@ use camino::Utf8Path;
 use eyre::{bail, eyre, WrapErr};
 
 use crate::{
+    compiler::inline_typst::{self, reset_typst_render_error_flag, typst_render_error_detected},
     compiler::{
         self,
         section::{HTMLContent, LazyContent, UnresolvedSection},
     },
     config,
-    compiler::inline_typst::{self, reset_typst_render_error_flag, typst_render_error_detected},
     environment::{self, BuildMode},
     path_utils,
     process::embed_markdown::{include_error_detected, reset_include_error_flag},

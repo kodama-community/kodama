@@ -75,12 +75,8 @@ mod tests {
 
         let actual: Vec<_> = filter_raw_html(events.into_iter(), true).collect();
         assert!(matches!(&actual[0], Event::Text(text) if text.as_ref() == "safe "));
-        assert!(
-            matches!(&actual[1], Event::InlineHtml(text) if text.as_ref() == "<span>")
-        );
+        assert!(matches!(&actual[1], Event::InlineHtml(text) if text.as_ref() == "<span>"));
         assert!(matches!(&actual[2], Event::Text(text) if text.as_ref() == "ok"));
-        assert!(
-            matches!(&actual[3], Event::InlineHtml(text) if text.as_ref() == "</span>")
-        );
+        assert!(matches!(&actual[3], Event::InlineHtml(text) if text.as_ref() == "</span>"));
     }
 }

@@ -15,8 +15,7 @@ use super::section::UnresolvedSection;
 use super::{
     compile_from_shallows,
     incremental::{dirty_source_slugs, source_relative_path},
-    inline_typst,
-    parse_source_sections,
+    inline_typst, parse_source_sections,
     stale::cleanup_stale_slug_artifacts,
     write_entry_cache, CompileOutputs, DirtySet, ParsedSections, SourceCache, Workspace,
 };

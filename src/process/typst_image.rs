@@ -151,7 +151,11 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
 
                         let placeholder = format!(
                             "{INLINE_PLACEHOLDER}{}\u{0}",
-                            inline_typst::push_inline_formula(shareds, inline_typst, self.current_slug)
+                            inline_typst::push_inline_formula(
+                                shareds,
+                                inline_typst,
+                                self.current_slug
+                            )
                         );
                         self.exit();
                         return Some(Event::Html(placeholder.into()));
@@ -163,7 +167,8 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
                         let svg_url = typst_url.with_extension("svg");
                         self.exit();
 
-                        let html = html_typst_figure(&environment::full_url(&svg_url), false, caption);
+                        let html =
+                            html_typst_figure(&environment::full_url(&svg_url), false, caption);
                         return Some(Event::Html(html.into()));
                     }
                     State::ImageBlock => {
@@ -173,7 +178,8 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
                         let svg_url = typst_url.with_extension("svg");
                         self.exit();
 
-                        let html = html_typst_figure(&environment::full_url(&svg_url), true, caption);
+                        let html =
+                            html_typst_figure(&environment::full_url(&svg_url), true, caption);
                         return Some(Event::Html(html.into()));
                     }
                     State::ImageCode => {

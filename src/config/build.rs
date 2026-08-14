@@ -44,7 +44,9 @@ impl Default for Build {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, clap::ValueEnum, Default, Deserialize, Serialize)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, Hash, clap::ValueEnum, Default, Deserialize, Serialize,
+)]
 pub enum FooterMode {
     #[default]
     #[serde(rename = "link")]

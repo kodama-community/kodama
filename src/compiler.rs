@@ -50,9 +50,7 @@ use self::{
 
 pub use incremental::expand_dirty_paths;
 pub use serve_session::ServeCompileSession;
-pub use source_scan::{
-    all_trees_source, sync_typst_svg_assets, Workspace,
-};
+pub use source_scan::{all_trees_source, sync_typst_svg_assets, Workspace};
 
 pub type DirtySet = HashSet<Utf8PathBuf>;
 pub type UnresolvedSections = HashMap<Slug, UnresolvedSection>;
@@ -247,11 +245,7 @@ pub(super) fn collect_shallows_with_sources(
             inline_typst::resolve_inline_typst_section(section, &results);
         }
         if let Some(cache) = cache {
-            write_entry_cache(
-                cache.entry_path.as_path(),
-                &sections,
-                cache.source_meta,
-            )?;
+            write_entry_cache(cache.entry_path.as_path(), &sections, cache.source_meta)?;
         }
 
         let produced_slugs: Vec<Slug> = sections.iter().map(|(slug, _)| *slug).collect();

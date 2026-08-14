@@ -178,7 +178,8 @@ impl<E> TextElaborator<'_, E> {
     }
 }
 
-fn classify_char(ch: char) -> CharClass {    if is_japanese_char(ch) {
+fn classify_char(ch: char) -> CharClass {
+    if is_japanese_char(ch) {
         CharClass::Japanese
     } else if is_korean_char(ch) {
         CharClass::Korean

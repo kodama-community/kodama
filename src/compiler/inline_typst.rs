@@ -8,9 +8,7 @@ use std::{
 };
 
 use crate::{
-    compiler::section::{
-        EmbedContent, HTMLContent, LazyContent, LocalLink, UnresolvedSection,
-    },
+    compiler::section::{EmbedContent, HTMLContent, LazyContent, LocalLink, UnresolvedSection},
     html_flake::html_inline_typst_span,
     slug::Slug,
     typst_cli,
@@ -79,8 +77,11 @@ pub fn compile_inline_batch() -> Vec<String> {
                     Ok(segments) => results.extend(wrap_segments(segments)),
                     Err(_) => {
                         for (h, source, slug) in &pending[idx..end] {
-                            let src =
-                                if h.is_empty() { source.clone() } else { format!("{h}\n{source}") };
+                            let src = if h.is_empty() {
+                                source.clone()
+                            } else {
+                                format!("{h}\n{source}")
+                            };
                             match typst_cli::source_to_inline_svg(&src) {
                                 Ok(html) => results.push(html),
                                 Err(err) => {
@@ -109,7 +110,11 @@ fn group_formulas(pending: &[(String, String, Slug)]) -> Vec<(String, Vec<String
             .last()
             .is_some_and(|(last_header, _)| last_header == header)
         {
-            groups.last_mut().expect("checked last").1.push(source.clone());
+            groups
+                .last_mut()
+                .expect("checked last")
+                .1
+                .push(source.clone());
         } else {
             groups.push((header.clone(), vec![source.clone()]));
         }
@@ -216,7 +221,10 @@ mod tests {
         ];
         let groups = group_formulas(&pending);
         assert_eq!(groups.len(), 3);
-        assert_eq!(groups[0], (String::new(), vec!["x".to_string(), "y".to_string()]));
+        assert_eq!(
+            groups[0],
+            (String::new(), vec!["x".to_string(), "y".to_string()])
+        );
         assert_eq!(
             groups[1],
             (
@@ -231,12 +239,10 @@ mod tests {
     fn test_resolve_inline_typst_section_replaces_placeholders_in_content_and_metadata() {
         let results = vec!["<svg>a</svg>".to_string(), "<svg>b</svg>".to_string()];
         let mut section = UnresolvedSection {
-            metadata: HTMLMetaData(OrderedMap::from_iter([
-                (
-                    "title".to_string(),
-                    HTMLContent::Plain(format!("{INLINE_PLACEHOLDER}1\u{0}")),
-                ),
-            ])),
+            metadata: HTMLMetaData(OrderedMap::from_iter([(
+                "title".to_string(),
+                HTMLContent::Plain(format!("{INLINE_PLACEHOLDER}1\u{0}")),
+            )])),
             content: HTMLContent::Lazy(vec![LazyContent::Plain(format!(
                 "x {INLINE_PLACEHOLDER}0\u{0} y"
             ))]),
@@ -263,9 +269,7 @@ mod tests {
     fn test_resolve_inline_typst_section_ignores_unknown_index() {
         let mut section = UnresolvedSection {
             metadata: HTMLMetaData(OrderedMap::new()),
-            content: HTMLContent::Plain(format!(
-                "{INLINE_PLACEHOLDER}9\u{0}",
-            )),
+            content: HTMLContent::Plain(format!("{INLINE_PLACEHOLDER}9\u{0}",)),
         };
         resolve_inline_typst_section(&mut section, &["ok".to_string()]);
         assert_eq!(section.content.as_str(), Some(""));

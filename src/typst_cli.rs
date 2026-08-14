@@ -97,7 +97,9 @@ pub fn source_to_inline_svgs(sources: &[String], shareds: &str) -> eyre::Result<
     let kodama_header = include_str!("include/kodama.typ");
     let mut input = format!("{}\n#show: kodama\n{}\n", kodama_header, shareds);
     for source in sources {
-        input.push_str(&format!("#html.elem(\"{INLINE_SEGMENT_TAG}\", [{source}])\n"));
+        input.push_str(&format!(
+            "#html.elem(\"{INLINE_SEGMENT_TAG}\", [{source}])\n"
+        ));
     }
 
     let svg = source_to_html(input.as_str())?;
@@ -133,7 +135,9 @@ pub fn source_to_inline_svgs_grouped(
             }
         }
         for source in sources {
-            input.push_str(&format!("  html.elem(\"{INLINE_SEGMENT_TAG}\", [{source}])\n"));
+            input.push_str(&format!(
+                "  html.elem(\"{INLINE_SEGMENT_TAG}\", [{source}])\n"
+            ));
         }
         input.push_str("}\n");
         input.push_str(&format!("#_segment_group_{group_idx}()\n"));
