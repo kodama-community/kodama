@@ -17,7 +17,7 @@ use crate::{
     environment::{self, BuildMode},
     path_utils,
     process::embed_markdown::{include_error_detected, reset_include_error_flag},
-    slug::{self, Ext, Slug},
+    slug::{self, SectionKind, Slug},
 };
 
 #[derive(clap::Args)]
@@ -81,9 +81,11 @@ pub fn check(command: &CheckCommand) -> eyre::Result<()> {
         )));
     }
     if !workspace.slug_exts.contains_key(&Slug::new("index")) {
-        diagnostics.push(Diagnostic::warning(
-            "Missing `index` section. Add `index.md` or `index.typst`.",
-        ));
+        diagnostics.push(Diagnostic::warning(format!(
+            "Missing `index` section. Add `index.{}` or `index.{}`.",
+            environment::markdown_suffix(),
+            environment::typst_suffix(),
+        )));
     }
 
     reset_typst_render_error_flag();
@@ -142,27 +144,28 @@ fn parse_shallows_no_cache(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> HashMap<Slug, UnresolvedSection> {
     let mut shallows = HashMap::new();
-    let mut entries: Vec<(Slug, Ext)> = workspace
+    let mut entries: Vec<(Slug, SectionKind)> = workspace
         .slug_exts
         .iter()
-        .map(|(&slug, &ext)| (slug, ext))
+        .map(|(&slug, &kind)| (slug, kind))
         .collect();
     entries.sort_by_key(|(slug, _)| slug.as_str());
 
     inline_typst::begin_inline_batch();
-    for (slug, ext) in entries {
-        match compiler::parse_source_sections(slug, ext) {
+    for (slug, kind) in entries {
+        let suffix = environment::suffix_for_kind(kind);
+        match compiler::parse_source_sections(slug, kind) {
             Ok(sections) => {
                 for (section_slug, section) in sections {
                     if shallows.insert(section_slug, section).is_some() {
                         diagnostics.push(Diagnostic::error(format!(
-                            "Duplicate section slug `{section_slug}` generated while parsing `{slug}.{ext}`."
+                            "Duplicate section slug `{section_slug}` generated while parsing `{slug}.{suffix}`."
                         )));
                     }
                 }
             }
             Err(err) => diagnostics.push(Diagnostic::error(format!(
-                "Failed to parse `{slug}.{ext}`: {err:#}"
+                "Failed to parse `{slug}.{suffix}`: {err:#}"
             ))),
         }
     }

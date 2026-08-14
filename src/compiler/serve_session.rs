@@ -8,7 +8,7 @@ use eyre::{eyre, WrapErr};
 
 use crate::{
     environment,
-    slug::{Ext, Slug},
+    slug::{SectionKind, Slug},
 };
 
 use super::section::UnresolvedSection;
@@ -72,8 +72,8 @@ impl ServeCompileSession {
         let dirty_slugs = dirty_source_slugs(&workspace, dirty_paths);
         let mut parse_targets: HashSet<Slug> = dirty_slugs.clone();
 
-        for (&slug, &ext) in &workspace.slug_exts {
-            if self.needs_refresh(slug, ext) {
+        for (&slug, &kind) in &workspace.slug_exts {
+            if self.needs_refresh(slug, kind) {
                 parse_targets.insert(slug);
             }
         }
@@ -83,12 +83,12 @@ impl ServeCompileSession {
         inline_typst::begin_inline_batch();
         let mut parsed: Vec<(Slug, ParsedSections, SourceCache)> = Vec::new();
         for slug in parse_targets {
-            let Some(&ext) = workspace.slug_exts.get(&slug) else {
+            let Some(&kind) = workspace.slug_exts.get(&slug) else {
                 continue;
             };
-            let relative_path = source_relative_path(slug, ext);
+            let relative_path = source_relative_path(slug, kind);
             let entry_path = environment::entry_file_path(relative_path.as_path());
-            let sections = parse_source_sections(slug, ext)?;
+            let sections = parse_source_sections(slug, kind)?;
             let source_meta = environment::relative_source_meta(&relative_path);
             parsed.push((
                 slug,
@@ -158,17 +158,17 @@ impl ServeCompileSession {
         compile_from_shallows(&workspace, &self.shallows, None, outputs, HashSet::new())
     }
 
-    fn needs_refresh(&self, slug: Slug, ext: Ext) -> bool {
+    fn needs_refresh(&self, slug: Slug, kind: SectionKind) -> bool {
         if !self.source_sections.contains_key(&slug) {
             return true;
         }
         let Some(shallow) = self.shallows.get(&slug) else {
             return true;
         };
-        let expected_ext = ext.to_string();
+        let expected_suffix = environment::suffix_for_kind(kind);
         shallow
             .ext()
-            .map(|value| value != expected_ext.as_str())
+            .map(|value| value != expected_suffix.as_str())
             .unwrap_or(true)
     }
 
@@ -199,43 +199,61 @@ mod tests {
         }
     }
 
+    fn with_test_env(f: impl FnOnce()) {
+        let root = crate::test_io::case_dir("serve-session");
+        crate::environment::with_test_environment(
+            root.clone(),
+            crate::environment::BuildMode::Publish,
+            f,
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     #[test]
     fn test_needs_refresh_when_shallow_missing() {
-        let session = ServeCompileSession::default();
-        assert!(session.needs_refresh(Slug::new("a"), Ext::Markdown));
+        with_test_env(|| {
+            let session = ServeCompileSession::default();
+            assert!(session.needs_refresh(Slug::new("a"), SectionKind::Markdown));
+        });
     }
 
     #[test]
     fn test_needs_refresh_when_extension_matches() {
-        let mut session = ServeCompileSession::default();
-        session
-            .source_sections
-            .insert(Slug::new("a"), vec![Slug::new("a")]);
-        session.shallows.insert(Slug::new("a"), shallow("a", "md"));
-        assert!(!session.needs_refresh(Slug::new("a"), Ext::Markdown));
+        with_test_env(|| {
+            let mut session = ServeCompileSession::default();
+            session
+                .source_sections
+                .insert(Slug::new("a"), vec![Slug::new("a")]);
+            session.shallows.insert(Slug::new("a"), shallow("a", "md"));
+            assert!(!session.needs_refresh(Slug::new("a"), SectionKind::Markdown));
+        });
     }
 
     #[test]
     fn test_needs_refresh_when_extension_differs() {
-        let mut session = ServeCompileSession::default();
-        session
-            .source_sections
-            .insert(Slug::new("a"), vec![Slug::new("a")]);
-        session.shallows.insert(Slug::new("a"), shallow("a", "md"));
-        assert!(session.needs_refresh(Slug::new("a"), Ext::Typst));
+        with_test_env(|| {
+            let mut session = ServeCompileSession::default();
+            session
+                .source_sections
+                .insert(Slug::new("a"), vec![Slug::new("a")]);
+            session.shallows.insert(Slug::new("a"), shallow("a", "md"));
+            assert!(session.needs_refresh(Slug::new("a"), SectionKind::Typst));
+        });
     }
 
     #[test]
     fn test_rewrite_all_from_memory_without_shallows_is_noop() {
-        let mut session = ServeCompileSession {
-            initialized: true,
-            ..ServeCompileSession::default()
-        };
-        session
-            .rewrite_all_from_memory(CompileOutputs {
-                indexes: false,
-                graph: false,
-            })
-            .unwrap();
+        with_test_env(|| {
+            let mut session = ServeCompileSession {
+                initialized: true,
+                ..ServeCompileSession::default()
+            };
+            session
+                .rewrite_all_from_memory(CompileOutputs {
+                    indexes: false,
+                    graph: false,
+                })
+                .unwrap();
+        });
     }
 }

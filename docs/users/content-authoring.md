@@ -4,12 +4,25 @@ Kodama turns each source file into one or more sections. A section is the unit t
 
 ## Source Files and Slugs
 
-The configured source tree defaults to `trees/`. Files ending in `.md` and `.typst` are section sources.
+The configured source tree defaults to `trees/`. Section sources are the files whose extensions are configured in `[suffix]` (defaults: `md` and `typst`).
 
 The section slug is derived from the source path without the extension. For example:
 
 - `trees/index.md` becomes `index`.
 - `trees/notes/alice.typst` becomes `notes/alice`.
+
+With a custom `[suffix]` you can use the standard `.typ` extension for typst content documents:
+
+```toml
+[suffix]
+markdown = "md"
+typst = "typ"
+typst-lib = "lib"
+```
+
+- `trees/index.md` becomes `index`.
+- `trees/notes/alice.typ` becomes `notes/alice`.
+- A typst library/resource file such as `trees/figures/shape.lib` is compiled to an SVG image instead of a page.
 
 An `index` section is strongly recommended. If it is missing, Kodama can still compile other sections, but validation and builds will warn because navigation defaults normally point back to `index`.
 

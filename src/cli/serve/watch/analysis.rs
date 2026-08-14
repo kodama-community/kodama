@@ -81,7 +81,7 @@ fn relative_tree_path(
 }
 
 fn is_source_extension(ext: Option<&str>) -> bool {
-    matches!(ext, Some("md") | Some("typst"))
+    ext.is_some_and(|e| crate::environment::kind_from_extension(e).is_some())
 }
 
 fn is_temp_like_path(path: &Utf8Path) -> bool {

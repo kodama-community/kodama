@@ -65,15 +65,30 @@ impl Display for Slug {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum Ext {
+/// The content format of a section source. The concrete file suffix is
+/// configured in `[suffix]` and resolved via the environment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SectionKind {
     Markdown,
     Typst,
 }
 
+/// The role of a file under the source tree, classified from its extension.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SourceRole {
+    /// Markdown content document (section).
+    Markdown,
+    /// Typst content document (section).
+    Typst,
+    /// Typst library/resource file (rendered as SVG, not a page).
+    TypstLib,
+    /// Not a recognized source file.
+    Unknown,
+}
+
 pub struct ParseExtensionError;
 
-impl FromStr for Ext {
+impl FromStr for SectionKind {
     type Err = ParseExtensionError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -85,11 +100,11 @@ impl FromStr for Ext {
     }
 }
 
-impl Display for Ext {
+impl Display for SectionKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            Ext::Markdown => "md",
-            Ext::Typst => "typst",
+            SectionKind::Markdown => "md",
+            SectionKind::Typst => "typst",
         };
         write!(f, "{s}")
     }
@@ -109,8 +124,11 @@ pub fn to_hash_id(slug_str: &str) -> String {
 pub fn to_slug<P: AsRef<Utf8Path>>(path: P) -> Slug {
     let path = path.as_ref();
     let normalized = path_utils::pretty_path(path);
-    let stripped = match path.extension().and_then(|ext| ext.parse::<Ext>().ok()) {
-        Some(Ext::Markdown) | Some(Ext::Typst) => path_utils::pretty_path(&path.with_extension("")),
+    let stripped = match path
+        .extension()
+        .and_then(crate::environment::kind_from_extension)
+    {
+        Some(_) => path_utils::pretty_path(&path.with_extension("")),
         None => normalized,
     };
     Slug::new(stripped)
@@ -137,13 +155,29 @@ mod tests {
     }
     #[test]
     fn test_to_slug_strips_known_source_extension() {
-        assert_eq!(to_slug("a.b.md"), Slug::new("a.b"));
-        assert_eq!(to_slug("a/b/c.typst"), Slug::new("a/b/c"));
+        let root = crate::test_io::case_dir("slug-strips");
+        crate::environment::with_test_environment(
+            root.clone(),
+            crate::environment::BuildMode::Publish,
+            || {
+                assert_eq!(to_slug("a.b.md"), Slug::new("a.b"));
+                assert_eq!(to_slug("a/b/c.typst"), Slug::new("a/b/c"));
+            },
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn test_to_slug_keeps_dot_segments_without_known_extension() {
-        assert_eq!(to_slug("a.b"), Slug::new("a.b"));
-        assert_eq!(to_slug("a.b/c.d"), Slug::new("a.b/c.d"));
+        let root = crate::test_io::case_dir("slug-dots");
+        crate::environment::with_test_environment(
+            root.clone(),
+            crate::environment::BuildMode::Publish,
+            || {
+                assert_eq!(to_slug("a.b"), Slug::new("a.b"));
+                assert_eq!(to_slug("a.b/c.d"), Slug::new("a.b/c.d"));
+            },
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 }

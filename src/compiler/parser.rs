@@ -46,7 +46,7 @@ pub const OPTIONS: Options = Options::ENABLE_MATH
 
 /// For Typst cases, see [`crate::compiler::typst::parse_typst`]
 pub fn initialize(slug: Slug) -> eyre::Result<String> {
-    let fullname = format!("{}.md", slug);
+    let fullname = format!("{}.{}", slug, environment::markdown_suffix());
     let markdown_path = input_path(&fullname);
     std::fs::read_to_string(&markdown_path)
         .wrap_err_with(|| eyre!("failed to read markdown file `{:?}`", markdown_path))
@@ -128,7 +128,10 @@ pub(super) fn parse_markdown_sections_from_source(
 pub(super) fn parse_markdown_source(source: &str, slug: Slug) -> eyre::Result<UnresolvedSection> {
     let mut metadata: OrderedMap<String, HTMLContent> = OrderedMap::new();
     metadata.insert(KEY_SLUG.to_string(), HTMLContent::Plain(slug.to_string()));
-    metadata.insert(KEY_EXT.to_string(), HTMLContent::Plain("md".to_string()));
+    metadata.insert(
+        KEY_EXT.to_string(),
+        HTMLContent::Plain(environment::markdown_suffix()),
+    );
 
     let events = pulldown_cmark::Parser::new_ext(source, OPTIONS);
     let events = filter_raw_html(events, environment::allow_unsafe_html());

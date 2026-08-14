@@ -273,7 +273,8 @@ fn resolve_include_url(raw_url: &str, current_slug: Slug) -> String {
 
 fn strip_markdown_extension(url: &str) -> String {
     let mut path = Utf8PathBuf::from(url.trim_start_matches('/'));
-    if path.extension() == Some("md") {
+    let configured = crate::environment::markdown_suffix();
+    if matches!(path.extension(), Some(e) if e == "md" || e == configured.as_str()) {
         path.set_extension("");
     }
     let pretty = path_utils::pretty_path(path.as_path());

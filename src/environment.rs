@@ -21,12 +21,13 @@ mod paths;
 pub use cache::ensure_cache_version;
 pub use config_access::{
     allow_unsafe_html, asref, assets_dir, assets_dir_without_root, base_url, base_url_raw,
-    deploy_edit_url, editor_url, elaborate_cjk_text, feed_path, footer_mode, footer_sort_by,
-    get_cache_dir, get_edit_text, get_footer_backlinks_text, get_footer_references_text,
-    get_toc_text, graph_path, indexes_path, inline_css, inline_script, is_short_slug, is_toc_left,
-    is_toc_mobile_sticky, is_toc_sticky, output_dir, pretty_urls, publish_rss, reload_marker_path,
-    serve_command, theme_lock, theme_paths, toc_max_width, trees_dir, trees_dir_without_root,
-    typst_root_dir,
+    classify_source, deploy_edit_url, editor_url, elaborate_cjk_text, feed_path, footer_mode,
+    footer_sort_by, get_cache_dir, get_edit_text, get_footer_backlinks_text,
+    get_footer_references_text, get_toc_text, graph_path, indexes_path, inline_css, inline_script,
+    is_short_slug, is_toc_left, is_toc_mobile_sticky, is_toc_sticky, kind_from_extension,
+    markdown_suffix, output_dir, pretty_urls, publish_rss, reload_marker_path, serve_command,
+    suffix_for_kind, theme_lock, theme_paths, toc_max_width, trees_dir, trees_dir_without_root,
+    typst_root_dir, typst_suffix,
 };
 pub use hashing::{file_meta_updated, relative_source_meta, SourceMeta};
 pub use imports::{import_fonts_html, import_math_html, import_meta_html, import_style_html};
@@ -179,6 +180,16 @@ pub(super) fn with_test_environment<R>(
     build_mode: BuildMode,
     f: impl FnOnce() -> R,
 ) -> R {
+    with_test_environment_config(root, build_mode, Config::default(), f)
+}
+
+#[cfg(test)]
+pub(super) fn with_test_environment_config<R>(
+    root: Utf8PathBuf,
+    build_mode: BuildMode,
+    config: Config,
+    f: impl FnOnce() -> R,
+) -> R {
     let _guard = lock_test_env_mutex();
 
     struct Reset;
@@ -192,7 +203,7 @@ pub(super) fn with_test_environment<R>(
     update_environment(Environment {
         root: root.clone(),
         config_file: root.join(crate::config::DEFAULT_CONFIG_PATH),
-        config: Config::default(),
+        config,
         build_mode,
     });
     f()

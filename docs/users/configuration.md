@@ -15,11 +15,39 @@ theme-lock = false
 themes = []
 ```
 
-- `trees`: source directory for `.md` and `.typst` sections.
+- `trees`: source directory for sections. Content documents use the suffixes configured in `[suffix]`.
 - `assets`: static assets directory copied into the output.
 - `base-url`: URL prefix used for generated links. Use `/` for root-relative local output, or an absolute `https://.../` URL for RSS publishing.
 - `theme-lock`: disables automatic theme switching when true.
 - `themes`: list of external theme paths imported into generated pages.
+
+## `[suffix]`
+
+```toml
+[suffix]
+markdown = "md"
+typst = "typst"
+typst-lib = "typ"
+```
+
+Kodama recognizes three kinds of files under `trees` by their file extension. These fields configure the suffixes for each kind:
+
+- `markdown`: suffix of markdown content documents (sections).
+- `typst`: suffix of typst content documents (sections).
+- `typst-lib`: suffix of typst library/resource files. Such files are not rendered as pages; a library file placed outside an ignored directory (for example `_lib/`) is compiled to an SVG image when referenced.
+
+The three suffixes must be pairwise distinct, and `markdown`/`typst` must not be empty.
+
+This lets you adopt the standard `.typ` extension for typst content documents:
+
+```toml
+[suffix]
+markdown = "md"
+typst = "typ"
+typst-lib = "lib"
+```
+
+Library files must then be kept under an ignored directory such as `_lib/` or use the configured `typst-lib` suffix. Setting `typst-lib` to an empty string disables the suffix-based library role.
 
 ## `[toc]`
 

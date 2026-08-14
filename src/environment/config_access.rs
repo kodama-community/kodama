@@ -4,7 +4,10 @@
 
 use camino::{Utf8Path, Utf8PathBuf};
 
-use crate::config::{build::FooterMode, toc};
+use crate::{
+    config::{build::FooterMode, toc},
+    slug::{SectionKind, SourceRole},
+};
 
 use super::with_config;
 
@@ -141,6 +144,35 @@ pub fn elaborate_cjk_text() -> bool {
 
 pub fn asref() -> bool {
     with_config(|cfg| cfg.build.asref)
+}
+
+pub fn markdown_suffix() -> String {
+    with_config(|cfg| cfg.suffix.markdown.clone())
+}
+
+pub fn typst_suffix() -> String {
+    with_config(|cfg| cfg.suffix.typst.clone())
+}
+
+/// The concrete file suffix for a section of the given content kind.
+pub fn suffix_for_kind(kind: SectionKind) -> String {
+    with_config(|cfg| cfg.suffix.suffix_for(kind).to_string())
+}
+
+/// Classify a file extension into its source role (markdown section, typst
+/// section, typst library, or unknown).
+pub fn classify_source(ext: &str) -> SourceRole {
+    with_config(|cfg| cfg.suffix.classify(ext))
+}
+
+/// Classify a file extension into a section content kind, or `None` when it is
+/// not a content document (e.g. a typst library or any other extension).
+pub fn kind_from_extension(ext: &str) -> Option<SectionKind> {
+    with_config(|cfg| match cfg.suffix.classify(ext) {
+        SourceRole::Markdown => Some(SectionKind::Markdown),
+        SourceRole::Typst => Some(SectionKind::Typst),
+        SourceRole::TypstLib | SourceRole::Unknown => None,
+    })
 }
 
 pub fn deploy_edit_url() -> Option<String> {

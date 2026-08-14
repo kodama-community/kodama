@@ -44,7 +44,7 @@ Create a Markdown section:
 kodama new post notes/alice --format .md
 ```
 
-If the path already has `.typst` or `.md`, Kodama uses that extension and ignores `--format`. Paths are resolved under the configured source tree. Passing a path that already starts with the source tree name is also accepted.
+If the path already has a recognized section extension (from `[suffix]`, by default `.typst` or `.md`), Kodama uses that extension and ignores `--format`. Paths are resolved under the configured source tree. Passing a path that already starts with the source tree name is also accepted.
 
 ## Build the Site
 

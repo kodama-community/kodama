@@ -64,7 +64,9 @@ fn compile_all_with_missing_index_warning(
     let compiled_index = state.compile(shallows, Slug::new("index"))?;
     if emit_missing_index_warning && compiled_index.is_none() {
         color_print::ceprintln!(
-            "<y>Warning: Missing `index` section, please provide `index.md` or `index.typst`.</>"
+            "<y>Warning: Missing `index` section, please provide `index.{}` or `index.{}`.</>",
+            environment::markdown_suffix(),
+            environment::typst_suffix(),
         );
     }
 

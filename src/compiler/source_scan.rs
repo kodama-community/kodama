@@ -10,14 +10,14 @@ use walkdir::WalkDir;
 
 use crate::{
     environment, path_utils,
-    slug::{Ext, Slug},
+    slug::{SectionKind, Slug, SourceRole},
 };
 
 use super::DirtySet;
 
 #[derive(Debug)]
 pub struct Workspace {
-    pub slug_exts: HashMap<Slug, Ext>,
+    pub slug_exts: HashMap<Slug, SectionKind>,
 }
 
 pub fn should_ignore_file(path: &Utf8Path) -> bool {
@@ -29,11 +29,11 @@ pub fn should_ignore_dir(path: &Utf8Path) -> bool {
         .is_some_and(|name| name.starts_with(['.', '_']))
 }
 
-fn to_slug_ext(source_dir: &Utf8Path, p: &Utf8Path) -> Option<(Slug, Ext)> {
+fn to_slug_kind(source_dir: &Utf8Path, p: &Utf8Path) -> Option<(Slug, SectionKind)> {
     let p = p.strip_prefix(source_dir).unwrap_or(p);
-    let ext = p.extension()?.parse().ok()?;
+    let kind = environment::kind_from_extension(p.extension()?)?;
     let slug = Slug::new(path_utils::pretty_path(&p.with_extension("")));
-    Some((slug, ext))
+    Some((slug, kind))
 }
 
 /// Collect all source file paths in `<trees>` dir.
@@ -45,11 +45,11 @@ fn all_trees_source_inner(trees_dir: &Utf8Path) -> eyre::Result<Workspace> {
     let mut slug_exts = HashMap::new();
 
     let failed_to_read_dir = |dir: &Utf8Path| eyre!("failed to read directory `{}`", dir);
-    let file_collide = |p: &Utf8Path, e: Ext| {
+    let file_collide = |p: &Utf8Path, kind: SectionKind| {
         eyre!(
             "`{}` collides with `{}`",
             p,
-            p.with_extension(e.to_string()),
+            p.with_extension(environment::suffix_for_kind(kind)),
         )
     };
 
@@ -63,12 +63,12 @@ fn all_trees_source_inner(trees_dir: &Utf8Path) -> eyre::Result<Workspace> {
                 .into_path();
 
             if path.is_file() && !should_ignore_file(&path) {
-                let Some((slug, ext)) = to_slug_ext(source_dir, &path) else {
+                let Some((slug, kind)) = to_slug_kind(source_dir, &path) else {
                     continue;
                 };
 
-                if let Some(ext) = slug_exts.insert(slug, ext) {
-                    bail!(file_collide(&path, ext));
+                if let Some(kind) = slug_exts.insert(slug, kind) {
+                    bail!(file_collide(&path, kind));
                 };
             } else if path.is_dir() && !should_ignore_dir(&path) {
                 for entry in WalkDir::new(&path)
@@ -93,11 +93,11 @@ fn all_trees_source_inner(trees_dir: &Utf8Path) -> eyre::Result<Workspace> {
                         }
                     };
                     if path.is_file() {
-                        let Some((slug, ext)) = to_slug_ext(source_dir, &path) else {
+                        let Some((slug, kind)) = to_slug_kind(source_dir, &path) else {
                             continue;
                         };
-                        if let Some(ext) = slug_exts.insert(slug, ext) {
-                            bail!(file_collide(&path, ext));
+                        if let Some(kind) = slug_exts.insert(slug, kind) {
+                            bail!(file_collide(&path, kind));
                         }
                     }
                 }
@@ -129,7 +129,11 @@ pub fn sync_typst_svg_assets(
 
     if let Some(dirty_paths) = dirty_paths {
         for relative in dirty_paths {
-            if relative.extension() != Some("typ") || is_under_ignored_dir(relative.as_path()) {
+            if !relative
+                .extension()
+                .is_some_and(|e| matches!(environment::classify_source(e), SourceRole::TypstLib))
+                || is_under_ignored_dir(relative.as_path())
+            {
                 continue;
             }
             let full_path = trees_dir.join(relative);
@@ -166,7 +170,11 @@ pub fn sync_typst_svg_assets(
                     continue;
                 }
             };
-            if !path.is_file() || path.extension() != Some("typ") {
+            if !path.is_file()
+                || !path
+                    .extension()
+                    .is_some_and(|e| matches!(environment::classify_source(e), SourceRole::TypstLib))
+            {
                 continue;
             }
             let Ok(relative) = path.strip_prefix(trees_dir) else {

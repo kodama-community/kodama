@@ -39,7 +39,7 @@ use crate::{
     entry::{MetaData, KEY_INTERNAL_ANON_SUBTREE},
     environment::{self, SourceMeta},
     ordered_map::OrderedMap,
-    slug::{Ext, Slug},
+    slug::{SectionKind, Slug},
 };
 
 use self::{
@@ -228,8 +228,8 @@ pub(super) fn collect_shallows_with_sources(
     inline_typst::begin_inline_batch();
 
     let mut pending: Vec<(Slug, ParsedSections, Option<SourceCache>)> = Vec::new();
-    for (&source_slug, &ext) in &workspace.slug_exts {
-        let (sections, cache) = load_shallow_sections(source_slug, ext, dirty_paths)?;
+    for (&source_slug, &kind) in &workspace.slug_exts {
+        let (sections, cache) = load_shallow_sections(source_slug, kind, dirty_paths)?;
         pending.push((source_slug, sections, cache));
     }
 
@@ -265,12 +265,26 @@ pub(super) fn collect_shallows_with_sources(
 }
 
 /// Parse a source file's sections.
-pub(crate) fn parse_source_sections(source_slug: Slug, ext: Ext) -> eyre::Result<ParsedSections> {
-    let mut sections = match ext {
-        Ext::Markdown => parse_markdown_sections(source_slug)
-            .wrap_err_with(|| eyre!("failed to parse markdown file `{source_slug}.{ext}`"))?,
-        Ext::Typst => parse_typst_sections(source_slug, environment::typst_root_dir())
-            .wrap_err_with(|| eyre!("failed to parse typst file `{source_slug}.{ext}`"))?,
+pub(crate) fn parse_source_sections(
+    source_slug: Slug,
+    kind: SectionKind,
+) -> eyre::Result<ParsedSections> {
+    let mut sections = match kind {
+        SectionKind::Markdown => parse_markdown_sections(source_slug).wrap_err_with(|| {
+            eyre!(
+                "failed to parse markdown file `{}.{}`",
+                source_slug,
+                environment::suffix_for_kind(kind)
+            )
+        })?,
+        SectionKind::Typst => parse_typst_sections(source_slug, environment::typst_root_dir())
+            .wrap_err_with(|| {
+                eyre!(
+                    "failed to parse typst file `{}.{}`",
+                    source_slug,
+                    environment::suffix_for_kind(kind)
+                )
+            })?,
     };
 
     for (_, section) in &mut sections {
@@ -332,10 +346,10 @@ fn read_entry_cache(
 
 fn load_shallow_sections(
     source_slug: Slug,
-    ext: Ext,
+    kind: SectionKind,
     dirty_paths: Option<&DirtySet>,
 ) -> eyre::Result<(ParsedSections, Option<SourceCache>)> {
-    let relative_path = source_relative_path(source_slug, ext);
+    let relative_path = source_relative_path(source_slug, kind);
     let entry_path = environment::entry_file_path(&relative_path);
 
     // Reparse when caching is disabled or the path is known to be dirty.
@@ -357,7 +371,7 @@ fn load_shallow_sections(
         }
     }
 
-    let sections = parse_source_sections(source_slug, ext)?;
+    let sections = parse_source_sections(source_slug, kind)?;
     Ok((
         sections,
         Some(SourceCache {
