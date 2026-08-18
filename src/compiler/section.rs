@@ -47,7 +47,10 @@ fn strip_tags(s: &str) -> String {
             continue;
         }
 
-        let ch = s[i..].chars().next().expect("byte is within a char boundary");
+        let ch = s[i..]
+            .chars()
+            .next()
+            .expect("byte is within a char boundary");
         out.push(ch);
         i += ch.len_utf8();
     }
@@ -273,10 +276,7 @@ mod tests {
 
     #[test]
     fn test_strip_tags_removes_common_tags() {
-        assert_eq!(
-            strip_tags("<p>hello <b>world</b></p>"),
-            "hello world"
-        );
+        assert_eq!(strip_tags("<p>hello <b>world</b></p>"), "hello world");
         assert_eq!(strip_tags("<a href=\"/x\">link</a>"), "link");
         assert_eq!(strip_tags("<img src=\"a.png\" />"), "");
         assert_eq!(strip_tags("</span>"), "");

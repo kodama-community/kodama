@@ -203,7 +203,10 @@ mod test {
             "#,
         ];
         for toml in colliding {
-            assert!(crate::config::parse_config(toml).is_err(), "expected error for `{toml}`");
+            assert!(
+                crate::config::parse_config(toml).is_err(),
+                "expected error for `{toml}`"
+            );
         }
     }
 

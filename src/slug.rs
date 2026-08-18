@@ -155,29 +155,13 @@ mod tests {
     }
     #[test]
     fn test_to_slug_strips_known_source_extension() {
-        let root = crate::test_io::case_dir("slug-strips");
-        crate::environment::with_test_environment(
-            root.clone(),
-            crate::environment::BuildMode::Publish,
-            || {
-                assert_eq!(to_slug("a.b.md"), Slug::new("a.b"));
-                assert_eq!(to_slug("a/b/c.typst"), Slug::new("a/b/c"));
-            },
-        );
-        let _ = std::fs::remove_dir_all(root);
+        assert_eq!(to_slug("a.b.md"), Slug::new("a.b"));
+        assert_eq!(to_slug("a/b/c.typst"), Slug::new("a/b/c"));
     }
 
     #[test]
     fn test_to_slug_keeps_dot_segments_without_known_extension() {
-        let root = crate::test_io::case_dir("slug-dots");
-        crate::environment::with_test_environment(
-            root.clone(),
-            crate::environment::BuildMode::Publish,
-            || {
-                assert_eq!(to_slug("a.b"), Slug::new("a.b"));
-                assert_eq!(to_slug("a.b/c.d"), Slug::new("a.b/c.d"));
-            },
-        );
-        let _ = std::fs::remove_dir_all(root);
+        assert_eq!(to_slug("a.b"), Slug::new("a.b"));
+        assert_eq!(to_slug("a.b/c.d"), Slug::new("a.b/c.d"));
     }
 }

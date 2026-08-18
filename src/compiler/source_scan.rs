@@ -171,9 +171,9 @@ pub fn sync_typst_svg_assets(
                 }
             };
             if !path.is_file()
-                || !path
-                    .extension()
-                    .is_some_and(|e| matches!(environment::classify_source(e), SourceRole::TypstLib))
+                || !path.extension().is_some_and(|e| {
+                    matches!(environment::classify_source(e), SourceRole::TypstLib)
+                })
             {
                 continue;
             }

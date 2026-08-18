@@ -37,7 +37,7 @@ Creates a new section under the configured source tree.
 
 Options:
 
-- `--format <suffix>`, short `-f`: extension used when the path has no extension. Defaults to the configured `[suffix].typst`. Any configured section suffix is accepted (for example `.typ` or `.markdown`).
+- `--format typ` or `--format md`, short `-f`: section format used when the path has no extension. The file is created with the configured `[suffix]` extension for that format. Defaults to `typ`.
 - `--template <path>`, short `-t`: template file. The placeholder `<FILE_NAME>` is replaced with the new file stem.
 - `--config <path>`, short `-c`: configuration file.
 

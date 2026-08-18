@@ -156,173 +156,149 @@ mod tests {
         }
     }
 
-    fn with_test_env(f: impl FnOnce()) {
-        let root = crate::test_io::case_dir("incremental");
-        crate::environment::with_test_environment(
-            root.clone(),
-            crate::environment::BuildMode::Publish,
-            f,
-        );
-        let _ = std::fs::remove_dir_all(root);
-    }
-
     #[test]
     fn test_expand_dirty_paths_typst_dependency_marks_all_typst_sources() {
-        with_test_env(|| {
-            let mut slug_exts = HashMap::new();
-            slug_exts.insert(Slug::new("a"), SectionKind::Markdown);
-            slug_exts.insert(Slug::new("b"), SectionKind::Typst);
-            slug_exts.insert(Slug::new("c"), SectionKind::Typst);
-            let workspace = Workspace { slug_exts };
+        let mut slug_exts = HashMap::new();
+        slug_exts.insert(Slug::new("a"), SectionKind::Markdown);
+        slug_exts.insert(Slug::new("b"), SectionKind::Typst);
+        slug_exts.insert(Slug::new("c"), SectionKind::Typst);
+        let workspace = Workspace { slug_exts };
 
-            let mut dirty = DirtySet::new();
-            dirty.insert(Utf8PathBuf::from("shared.typ"));
+        let mut dirty = DirtySet::new();
+        dirty.insert(Utf8PathBuf::from("shared.typ"));
 
-            let expanded = expand_dirty_paths(&workspace, &dirty);
-            assert!(expanded.contains(&Utf8PathBuf::from("shared.typ")));
-            assert!(expanded.contains(&Utf8PathBuf::from("b.typst")));
-            assert!(expanded.contains(&Utf8PathBuf::from("c.typst")));
-            assert!(!expanded.contains(&Utf8PathBuf::from("a.md")));
-        });
+        let expanded = expand_dirty_paths(&workspace, &dirty);
+        assert!(expanded.contains(&Utf8PathBuf::from("shared.typ")));
+        assert!(expanded.contains(&Utf8PathBuf::from("b.typst")));
+        assert!(expanded.contains(&Utf8PathBuf::from("c.typst")));
+        assert!(!expanded.contains(&Utf8PathBuf::from("a.md")));
     }
 
     #[test]
     fn test_expand_dirty_paths_typst_source_change_keeps_scope_local() {
-        with_test_env(|| {
-            let mut slug_exts = HashMap::new();
-            slug_exts.insert(Slug::new("a"), SectionKind::Markdown);
-            slug_exts.insert(Slug::new("b"), SectionKind::Typst);
-            slug_exts.insert(Slug::new("c"), SectionKind::Typst);
-            let workspace = Workspace { slug_exts };
+        let mut slug_exts = HashMap::new();
+        slug_exts.insert(Slug::new("a"), SectionKind::Markdown);
+        slug_exts.insert(Slug::new("b"), SectionKind::Typst);
+        slug_exts.insert(Slug::new("c"), SectionKind::Typst);
+        let workspace = Workspace { slug_exts };
 
-            let mut dirty = DirtySet::new();
-            dirty.insert(Utf8PathBuf::from("b.typst"));
+        let mut dirty = DirtySet::new();
+        dirty.insert(Utf8PathBuf::from("b.typst"));
 
-            let expanded = expand_dirty_paths(&workspace, &dirty);
-            assert!(expanded.contains(&Utf8PathBuf::from("b.typst")));
-            assert!(!expanded.contains(&Utf8PathBuf::from("c.typst")));
-            assert!(!expanded.contains(&Utf8PathBuf::from("a.md")));
-        });
+        let expanded = expand_dirty_paths(&workspace, &dirty);
+        assert!(expanded.contains(&Utf8PathBuf::from("b.typst")));
+        assert!(!expanded.contains(&Utf8PathBuf::from("c.typst")));
+        assert!(!expanded.contains(&Utf8PathBuf::from("a.md")));
     }
 
     #[test]
     fn test_expand_dirty_paths_unknown_markdown_dependency_marks_all_sources() {
-        with_test_env(|| {
-            let mut slug_exts = HashMap::new();
-            slug_exts.insert(Slug::new("a"), SectionKind::Markdown);
-            slug_exts.insert(Slug::new("b"), SectionKind::Typst);
-            let workspace = Workspace { slug_exts };
+        let mut slug_exts = HashMap::new();
+        slug_exts.insert(Slug::new("a"), SectionKind::Markdown);
+        slug_exts.insert(Slug::new("b"), SectionKind::Typst);
+        let workspace = Workspace { slug_exts };
 
-            let mut dirty = DirtySet::new();
-            dirty.insert(Utf8PathBuf::from("_includes/shared.md"));
+        let mut dirty = DirtySet::new();
+        dirty.insert(Utf8PathBuf::from("_includes/shared.md"));
 
-            let expanded = expand_dirty_paths(&workspace, &dirty);
-            assert!(expanded.contains(&Utf8PathBuf::from("a.md")));
-            assert!(expanded.contains(&Utf8PathBuf::from("b.typst")));
-        });
+        let expanded = expand_dirty_paths(&workspace, &dirty);
+        assert!(expanded.contains(&Utf8PathBuf::from("a.md")));
+        assert!(expanded.contains(&Utf8PathBuf::from("b.typst")));
     }
 
     #[test]
     fn test_expand_dirty_paths_unknown_tree_file_marks_all_sources() {
-        with_test_env(|| {
-            let mut slug_exts = HashMap::new();
-            slug_exts.insert(Slug::new("a"), SectionKind::Markdown);
-            slug_exts.insert(Slug::new("b"), SectionKind::Typst);
-            let workspace = Workspace { slug_exts };
+        let mut slug_exts = HashMap::new();
+        slug_exts.insert(Slug::new("a"), SectionKind::Markdown);
+        slug_exts.insert(Slug::new("b"), SectionKind::Typst);
+        let workspace = Workspace { slug_exts };
 
-            let mut dirty = DirtySet::new();
-            dirty.insert(Utf8PathBuf::from("includes/snippet.txt"));
+        let mut dirty = DirtySet::new();
+        dirty.insert(Utf8PathBuf::from("includes/snippet.txt"));
 
-            let expanded = expand_dirty_paths(&workspace, &dirty);
-            assert!(expanded.contains(&Utf8PathBuf::from("a.md")));
-            assert!(expanded.contains(&Utf8PathBuf::from("b.typst")));
-        });
+        let expanded = expand_dirty_paths(&workspace, &dirty);
+        assert!(expanded.contains(&Utf8PathBuf::from("a.md")));
+        assert!(expanded.contains(&Utf8PathBuf::from("b.typst")));
     }
 
     #[test]
     fn test_dirty_source_slugs_maps_relative_paths_to_slug_ids() {
-        with_test_env(|| {
-            let mut slug_exts = HashMap::new();
-            slug_exts.insert(Slug::new("a"), SectionKind::Markdown);
-            slug_exts.insert(Slug::new("b"), SectionKind::Typst);
-            let workspace = Workspace { slug_exts };
+        let mut slug_exts = HashMap::new();
+        slug_exts.insert(Slug::new("a"), SectionKind::Markdown);
+        slug_exts.insert(Slug::new("b"), SectionKind::Typst);
+        let workspace = Workspace { slug_exts };
 
-            let mut dirty = DirtySet::new();
-            dirty.insert(Utf8PathBuf::from("a.md"));
-            dirty.insert(Utf8PathBuf::from("unknown.txt"));
+        let mut dirty = DirtySet::new();
+        dirty.insert(Utf8PathBuf::from("a.md"));
+        dirty.insert(Utf8PathBuf::from("unknown.txt"));
 
-            let dirty_slugs = dirty_source_slugs(&workspace, &dirty);
-            assert!(dirty_slugs.contains(&Slug::new("a")));
-            assert!(!dirty_slugs.contains(&Slug::new("b")));
-        });
+        let dirty_slugs = dirty_source_slugs(&workspace, &dirty);
+        assert!(dirty_slugs.contains(&Slug::new("a")));
+        assert!(!dirty_slugs.contains(&Slug::new("b")));
     }
 
     #[test]
     fn test_affected_slugs_include_link_targets_when_linker_changes() {
-        with_test_env(|| {
-            let mut shallows = HashMap::new();
-            shallows.insert(
-                Slug::new("a"),
-                shallow(
-                    "a",
-                    HTMLContent::Lazy(vec![LazyContent::Local(LocalLink {
-                        url: "/b.md".to_string(),
-                        text: None,
-                    })]),
-                ),
-            );
-            shallows.insert(
-                Slug::new("b"),
-                shallow("b", HTMLContent::Plain("<p>b</p>".to_string())),
-            );
+        let mut shallows = HashMap::new();
+        shallows.insert(
+            Slug::new("a"),
+            shallow(
+                "a",
+                HTMLContent::Lazy(vec![LazyContent::Local(LocalLink {
+                    url: "/b.md".to_string(),
+                    text: None,
+                })]),
+            ),
+        );
+        shallows.insert(
+            Slug::new("b"),
+            shallow("b", HTMLContent::Plain("<p>b</p>".to_string())),
+        );
 
-            let state = state::compile_all(&shallows).unwrap();
-            let dirty_slugs = HashSet::from([Slug::new("a")]);
-            let affected = affected_slugs_from_dirty(&state, &dirty_slugs);
+        let state = state::compile_all(&shallows).unwrap();
+        let dirty_slugs = HashSet::from([Slug::new("a")]);
+        let affected = affected_slugs_from_dirty(&state, &dirty_slugs);
 
-            assert!(affected.contains(&Slug::new("a")));
-            assert!(affected.contains(&Slug::new("b")));
-        });
+        assert!(affected.contains(&Slug::new("a")));
+        assert!(affected.contains(&Slug::new("b")));
     }
 
     #[test]
     fn test_affected_slugs_include_embedded_descendants_when_parent_source_changes() {
-        with_test_env(|| {
-            let mut shallows = HashMap::new();
-            shallows.insert(
-                Slug::new("root"),
-                shallow(
-                    "root",
-                    HTMLContent::Lazy(vec![LazyContent::Embed(EmbedContent {
-                        url: "/child.md".to_string(),
-                        title: None,
-                        option: SectionOption::default(),
-                    })]),
-                ),
-            );
-            shallows.insert(
-                Slug::new("child"),
-                shallow(
-                    "child",
-                    HTMLContent::Lazy(vec![LazyContent::Embed(EmbedContent {
-                        url: "/leaf.md".to_string(),
-                        title: None,
-                        option: SectionOption::default(),
-                    })]),
-                ),
-            );
-            shallows.insert(
-                Slug::new("leaf"),
-                shallow("leaf", HTMLContent::Plain("<p>leaf</p>".to_string())),
-            );
+        let mut shallows = HashMap::new();
+        shallows.insert(
+            Slug::new("root"),
+            shallow(
+                "root",
+                HTMLContent::Lazy(vec![LazyContent::Embed(EmbedContent {
+                    url: "/child.md".to_string(),
+                    title: None,
+                    option: SectionOption::default(),
+                })]),
+            ),
+        );
+        shallows.insert(
+            Slug::new("child"),
+            shallow(
+                "child",
+                HTMLContent::Lazy(vec![LazyContent::Embed(EmbedContent {
+                    url: "/leaf.md".to_string(),
+                    title: None,
+                    option: SectionOption::default(),
+                })]),
+            ),
+        );
+        shallows.insert(
+            Slug::new("leaf"),
+            shallow("leaf", HTMLContent::Plain("<p>leaf</p>".to_string())),
+        );
 
-            let state = state::compile_all(&shallows).unwrap();
-            let dirty_slugs = HashSet::from([Slug::new("root")]);
-            let affected = affected_slugs_from_dirty(&state, &dirty_slugs);
+        let state = state::compile_all(&shallows).unwrap();
+        let dirty_slugs = HashSet::from([Slug::new("root")]);
+        let affected = affected_slugs_from_dirty(&state, &dirty_slugs);
 
-            assert!(affected.contains(&Slug::new("root")));
-            assert!(affected.contains(&Slug::new("child")));
-            assert!(affected.contains(&Slug::new("leaf")));
-        });
+        assert!(affected.contains(&Slug::new("root")));
+        assert!(affected.contains(&Slug::new("child")));
+        assert!(affected.contains(&Slug::new("leaf")));
     }
 }

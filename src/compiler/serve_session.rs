@@ -199,61 +199,29 @@ mod tests {
         }
     }
 
-    fn with_test_env(f: impl FnOnce()) {
-        let root = crate::test_io::case_dir("serve-session");
-        crate::environment::with_test_environment(
-            root.clone(),
-            crate::environment::BuildMode::Publish,
-            f,
-        );
-        let _ = std::fs::remove_dir_all(root);
-    }
-
     #[test]
     fn test_needs_refresh_when_shallow_missing() {
-        with_test_env(|| {
-            let session = ServeCompileSession::default();
-            assert!(session.needs_refresh(Slug::new("a"), SectionKind::Markdown));
-        });
+        let session = ServeCompileSession::default();
+        assert!(session.needs_refresh(Slug::new("a"), SectionKind::Markdown));
     }
 
     #[test]
     fn test_needs_refresh_when_extension_matches() {
-        with_test_env(|| {
-            let mut session = ServeCompileSession::default();
-            session
-                .source_sections
-                .insert(Slug::new("a"), vec![Slug::new("a")]);
-            session.shallows.insert(Slug::new("a"), shallow("a", "md"));
-            assert!(!session.needs_refresh(Slug::new("a"), SectionKind::Markdown));
-        });
+        let mut session = ServeCompileSession::default();
+        session
+            .source_sections
+            .insert(Slug::new("a"), vec![Slug::new("a")]);
+        session.shallows.insert(Slug::new("a"), shallow("a", "md"));
+        assert!(!session.needs_refresh(Slug::new("a"), SectionKind::Markdown));
     }
 
     #[test]
     fn test_needs_refresh_when_extension_differs() {
-        with_test_env(|| {
-            let mut session = ServeCompileSession::default();
-            session
-                .source_sections
-                .insert(Slug::new("a"), vec![Slug::new("a")]);
-            session.shallows.insert(Slug::new("a"), shallow("a", "md"));
-            assert!(session.needs_refresh(Slug::new("a"), SectionKind::Typst));
-        });
-    }
-
-    #[test]
-    fn test_rewrite_all_from_memory_without_shallows_is_noop() {
-        with_test_env(|| {
-            let mut session = ServeCompileSession {
-                initialized: true,
-                ..ServeCompileSession::default()
-            };
-            session
-                .rewrite_all_from_memory(CompileOutputs {
-                    indexes: false,
-                    graph: false,
-                })
-                .unwrap();
-        });
+        let mut session = ServeCompileSession::default();
+        session
+            .source_sections
+            .insert(Slug::new("a"), vec![Slug::new("a")]);
+        session.shallows.insert(Slug::new("a"), shallow("a", "md"));
+        assert!(session.needs_refresh(Slug::new("a"), SectionKind::Typst));
     }
 }

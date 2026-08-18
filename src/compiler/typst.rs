@@ -173,8 +173,10 @@ fn parse_typst_html(
                     KEY_SLUG.to_string(),
                     HTMLContent::Plain(subtree_slug.to_string()),
                 );
-                subtree_metadata
-                    .insert(KEY_EXT.to_string(), HTMLContent::Plain(environment::typst_suffix()));
+                subtree_metadata.insert(
+                    KEY_EXT.to_string(),
+                    HTMLContent::Plain(environment::typst_suffix()),
+                );
                 subtree_metadata.insert(
                     KEY_SOURCE_SLUG.to_string(),
                     HTMLContent::Plain(source_slug.to_string()),
@@ -319,154 +321,136 @@ mod tests {
             .expect("expected section")
     }
 
-    fn with_test_env(f: impl FnOnce()) {
-        let root = crate::test_io::case_dir("typst");
-        crate::environment::with_test_environment(
-            root.clone(),
-            crate::environment::BuildMode::Publish,
-            f,
-        );
-        let _ = std::fs::remove_dir_all(root);
-    }
-
     #[test]
     fn test_parse_typst_sections_extracts_named_subtree() {
-        with_test_env(|| {
-            let html = r#"
+        let html = r#"
 <p>root</p>
 <kodama-subtree slug="child" title="Child" numbering="true"><p>child</p></kodama-subtree>
 "#;
-            let sections = parse_typst_sections_from_html(Slug::new("book/index"), html).unwrap();
-            assert_eq!(sections.len(), 2);
+        let sections = parse_typst_sections_from_html(Slug::new("book/index"), html).unwrap();
+        assert_eq!(sections.len(), 2);
 
-            let root = find_section(&sections, Slug::new("book/index"));
-            let root_contents = match &root.content {
-                HTMLContent::Lazy(contents) => contents,
-                _ => panic!("expected lazy root content"),
-            };
-            let embed = root_contents
-                .iter()
-                .find_map(|content| match content {
-                    LazyContent::Embed(embed) => Some(embed),
-                    _ => None,
-                })
-                .expect("expected subtree embed");
-            assert_eq!(embed.url, "/book/child");
-            assert_eq!(embed.title.as_deref(), Some("Child"));
-            assert!(embed.option.numbering);
+        let root = find_section(&sections, Slug::new("book/index"));
+        let root_contents = match &root.content {
+            HTMLContent::Lazy(contents) => contents,
+            _ => panic!("expected lazy root content"),
+        };
+        let embed = root_contents
+            .iter()
+            .find_map(|content| match content {
+                LazyContent::Embed(embed) => Some(embed),
+                _ => None,
+            })
+            .expect("expected subtree embed");
+        assert_eq!(embed.url, "/book/child");
+        assert_eq!(embed.title.as_deref(), Some("Child"));
+        assert!(embed.option.numbering);
 
-            let child = find_section(&sections, Slug::new("book/child"));
-            assert_eq!(
-                child.metadata.title().and_then(HTMLContent::as_str),
-                Some("Child")
-            );
-            assert_eq!(child.metadata.ext(), Some("typst"));
-            assert_eq!(child.metadata.get_str(KEY_SOURCE_SLUG), Some("book/index"));
-        });
+        let child = find_section(&sections, Slug::new("book/child"));
+        assert_eq!(
+            child.metadata.title().and_then(HTMLContent::as_str),
+            Some("Child")
+        );
+        assert_eq!(child.metadata.ext(), Some("typst"));
+        assert_eq!(child.metadata.get_str(KEY_SOURCE_SLUG), Some("book/index"));
     }
 
     #[test]
     fn test_parse_typst_sections_subtree_body_metadata_overrides_attr_defaults() {
-        with_test_env(|| {
-            let html = r#"
+        let html = r#"
 <kodama-subtree slug="child" title="Outer">
 <kodama-meta key="title" value="Inner"></kodama-meta>
 <p>child</p>
 </kodama-subtree>
 "#;
-            let sections = parse_typst_sections_from_html(Slug::new("book/index"), html).unwrap();
-            let root = find_section(&sections, Slug::new("book/index"));
-            let root_contents = match &root.content {
-                HTMLContent::Lazy(contents) => contents,
-                _ => panic!("expected lazy root content"),
-            };
-            let embed = root_contents
-                .iter()
-                .find_map(|content| match content {
-                    LazyContent::Embed(embed) => Some(embed),
-                    _ => None,
-                })
-                .expect("expected subtree embed");
-            assert_eq!(embed.title.as_deref(), Some("Outer"));
+        let sections = parse_typst_sections_from_html(Slug::new("book/index"), html).unwrap();
+        let root = find_section(&sections, Slug::new("book/index"));
+        let root_contents = match &root.content {
+            HTMLContent::Lazy(contents) => contents,
+            _ => panic!("expected lazy root content"),
+        };
+        let embed = root_contents
+            .iter()
+            .find_map(|content| match content {
+                LazyContent::Embed(embed) => Some(embed),
+                _ => None,
+            })
+            .expect("expected subtree embed");
+        assert_eq!(embed.title.as_deref(), Some("Outer"));
 
-            let child = find_section(&sections, Slug::new("book/child"));
-            assert_eq!(
-                child.metadata.title().and_then(HTMLContent::as_str),
-                Some("Inner")
-            );
-        });
+        let child = find_section(&sections, Slug::new("book/child"));
+        assert_eq!(
+            child.metadata.title().and_then(HTMLContent::as_str),
+            Some("Inner")
+        );
     }
 
     #[test]
     fn test_parse_typst_sections_extracts_anonymous_subtree() {
-        with_test_env(|| {
-            let html = r#"
+        let html = r#"
 <p>root</p>
 <kodama-subtree title="Anonymous"><p>child</p></kodama-subtree>
 "#;
-            let sections = parse_typst_sections_from_html(Slug::new("book/index"), html).unwrap();
-            assert_eq!(sections.len(), 2);
+        let sections = parse_typst_sections_from_html(Slug::new("book/index"), html).unwrap();
+        assert_eq!(sections.len(), 2);
 
-            let root = find_section(&sections, Slug::new("book/index"));
-            let root_contents = match &root.content {
-                HTMLContent::Lazy(contents) => contents,
-                _ => panic!("expected lazy root content"),
-            };
-            let embed = root_contents
-                .iter()
-                .find_map(|content| match content {
-                    LazyContent::Embed(embed) => Some(embed),
-                    _ => None,
-                })
-                .expect("expected subtree embed");
-            let anonymous_slug =
-                anonymous_slug_for(Slug::new("book/index"), ANON_SUBTREE_ORDINAL_INITIAL);
-            assert_eq!(embed.url, format!("/{anonymous_slug}"));
-            assert_eq!(embed.title.as_deref(), Some("Anonymous"));
+        let root = find_section(&sections, Slug::new("book/index"));
+        let root_contents = match &root.content {
+            HTMLContent::Lazy(contents) => contents,
+            _ => panic!("expected lazy root content"),
+        };
+        let embed = root_contents
+            .iter()
+            .find_map(|content| match content {
+                LazyContent::Embed(embed) => Some(embed),
+                _ => None,
+            })
+            .expect("expected subtree embed");
+        let anonymous_slug =
+            anonymous_slug_for(Slug::new("book/index"), ANON_SUBTREE_ORDINAL_INITIAL);
+        assert_eq!(embed.url, format!("/{anonymous_slug}"));
+        assert_eq!(embed.title.as_deref(), Some("Anonymous"));
 
-            let anonymous = find_section(&sections, anonymous_slug);
-            assert_eq!(
-                anonymous.metadata.get_str(KEY_INTERNAL_ANON_SUBTREE),
-                Some("true")
-            );
-        });
+        let anonymous = find_section(&sections, anonymous_slug);
+        assert_eq!(
+            anonymous.metadata.get_str(KEY_INTERNAL_ANON_SUBTREE),
+            Some("true")
+        );
     }
 
     #[test]
     fn test_parse_typst_sections_nested_named_subtree_under_anonymous_wrapper_uses_visible_prefix()
     {
-        with_test_env(|| {
-            let html = r#"
+        let html = r#"
 <kodama-subtree>
   <kodama-subtree slug="child"><p>nested</p></kodama-subtree>
 </kodama-subtree>
 "#;
-            let sections = parse_typst_sections_from_html(Slug::new("book/index"), html).unwrap();
-            assert!(sections
-                .iter()
-                .any(|(slug, _)| *slug == Slug::new("book/child")));
+        let sections = parse_typst_sections_from_html(Slug::new("book/index"), html).unwrap();
+        assert!(sections
+            .iter()
+            .any(|(slug, _)| *slug == Slug::new("book/child")));
 
-            let anonymous = sections
-                .iter()
-                .find_map(|(_, section)| {
-                    section
-                        .metadata
-                        .get_str(KEY_INTERNAL_ANON_SUBTREE)
-                        .is_some_and(|value| value == "true")
-                        .then_some(section)
-                })
-                .expect("expected anonymous wrapper section");
-            let HTMLContent::Lazy(contents) = &anonymous.content else {
-                panic!("expected lazy anonymous content");
-            };
-            let nested_embed_urls: Vec<_> = contents
-                .iter()
-                .filter_map(|content| match content {
-                    LazyContent::Embed(embed) => Some(embed.url.clone()),
-                    _ => None,
-                })
-                .collect();
-            assert_eq!(nested_embed_urls, vec!["/book/child".to_string()]);
-        });
+        let anonymous = sections
+            .iter()
+            .find_map(|(_, section)| {
+                section
+                    .metadata
+                    .get_str(KEY_INTERNAL_ANON_SUBTREE)
+                    .is_some_and(|value| value == "true")
+                    .then_some(section)
+            })
+            .expect("expected anonymous wrapper section");
+        let HTMLContent::Lazy(contents) = &anonymous.content else {
+            panic!("expected lazy anonymous content");
+        };
+        let nested_embed_urls: Vec<_> = contents
+            .iter()
+            .filter_map(|content| match content {
+                LazyContent::Embed(embed) => Some(embed.url.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(nested_embed_urls, vec!["/book/child".to_string()]);
     }
 }

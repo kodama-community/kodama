@@ -23,9 +23,9 @@ pub(super) fn source_from_entry_relative_path(
     let entry_relative_path = path_utils::pretty_path(entry_relative_path);
     let source_relative_path = entry_relative_path.strip_suffix(".entry")?;
     let source_relative_path = Utf8PathBuf::from(source_relative_path);
-    let kind = source_relative_path.extension().and_then(|e| {
-        environment::kind_from_extension(e).or_else(|| e.parse().ok())
-    })?;
+    let kind = source_relative_path
+        .extension()
+        .and_then(|e| environment::kind_from_extension(e).or_else(|| e.parse().ok()))?;
     let slug = Slug::new(path_utils::pretty_path(
         &source_relative_path.with_extension(""),
     ));
@@ -168,74 +168,55 @@ mod tests {
 
     #[test]
     fn test_source_from_entry_relative_path_parses_slug_and_extension() {
-        let env_root = crate::test_io::case_dir("stale-env");
-        crate::environment::with_test_environment(
-            env_root.clone(),
-            crate::environment::BuildMode::Publish,
-            || {
-                let relative = Utf8Path::new("foo/bar.md.entry");
-                let (source_relative, slug, kind) =
-                    source_from_entry_relative_path(relative).unwrap();
-                assert_eq!(source_relative, Utf8PathBuf::from("foo/bar.md"));
-                assert_eq!(slug, Slug::new("foo/bar"));
-                assert!(matches!(kind, SectionKind::Markdown));
-            },
-        );
-        let _ = fs::remove_dir_all(env_root);
+        let relative = Utf8Path::new("foo/bar.md.entry");
+        let (source_relative, slug, kind) = source_from_entry_relative_path(relative).unwrap();
+        assert_eq!(source_relative, Utf8PathBuf::from("foo/bar.md"));
+        assert_eq!(slug, Slug::new("foo/bar"));
+        assert!(matches!(kind, SectionKind::Markdown));
     }
 
     #[test]
     fn test_cleanup_stale_slug_artifacts_removes_stale_cache_and_reports_stale_slugs() {
-        let env_root = crate::test_io::case_dir("stale-env-cleanup");
-        crate::environment::with_test_environment(
-            env_root.clone(),
-            crate::environment::BuildMode::Publish,
-            || {
-                let base = crate::test_io::case_dir("cleanup-stale");
-                let entry_dir = base.join("entry");
-                let hash_dir = base.join("hash");
-                fs::create_dir_all(&entry_dir).unwrap();
-                fs::create_dir_all(&hash_dir).unwrap();
+        let base = crate::test_io::case_dir("cleanup-stale");
+        let entry_dir = base.join("entry");
+        let hash_dir = base.join("hash");
+        fs::create_dir_all(&entry_dir).unwrap();
+        fs::create_dir_all(&hash_dir).unwrap();
 
-                let stale_source = Utf8PathBuf::from("old.md");
-                let mut stale_entry = entry_dir.join(&stale_source);
-                stale_entry.set_extension("md.entry");
-                let stale_hash =
-                    hash_cache_path_no_create(hash_dir.as_path(), stale_source.as_path());
-                fs::create_dir_all(stale_entry.parent().unwrap()).unwrap();
-                fs::create_dir_all(stale_hash.parent().unwrap()).unwrap();
-                fs::write(&stale_entry, "{}").unwrap();
-                fs::write(&stale_hash, "1").unwrap();
+        let stale_source = Utf8PathBuf::from("old.md");
+        let mut stale_entry = entry_dir.join(&stale_source);
+        stale_entry.set_extension("md.entry");
+        let stale_hash = hash_cache_path_no_create(hash_dir.as_path(), stale_source.as_path());
+        fs::create_dir_all(stale_entry.parent().unwrap()).unwrap();
+        fs::create_dir_all(stale_hash.parent().unwrap()).unwrap();
+        fs::write(&stale_entry, "{}").unwrap();
+        fs::write(&stale_hash, "1").unwrap();
 
-                let keep_source = Utf8PathBuf::from("keep.md");
-                let mut keep_entry = entry_dir.join(&keep_source);
-                keep_entry.set_extension("md.entry");
-                let keep_hash =
-                    hash_cache_path_no_create(hash_dir.as_path(), keep_source.as_path());
-                fs::write(&keep_entry, "{}").unwrap();
-                fs::write(&keep_hash, "1").unwrap();
+        let keep_source = Utf8PathBuf::from("keep.md");
+        let mut keep_entry = entry_dir.join(&keep_source);
+        keep_entry.set_extension("md.entry");
+        let keep_hash = hash_cache_path_no_create(hash_dir.as_path(), keep_source.as_path());
+        fs::write(&keep_entry, "{}").unwrap();
+        fs::write(&keep_hash, "1").unwrap();
 
-                let mut slug_exts = HashMap::new();
-                slug_exts.insert(Slug::new("keep"), SectionKind::Markdown);
-                let workspace = Workspace { slug_exts };
+        let mut slug_exts = HashMap::new();
+        slug_exts.insert(Slug::new("keep"), SectionKind::Markdown);
+        let workspace = Workspace { slug_exts };
 
-                let stale = cleanup_stale_slug_artifacts_with_paths(
-                    &workspace,
-                    entry_dir.as_path(),
-                    hash_dir.as_path(),
-                )
-                .unwrap();
+        let stale = cleanup_stale_slug_artifacts_with_paths(
+            &workspace,
+            entry_dir.as_path(),
+            hash_dir.as_path(),
+        )
+        .unwrap();
 
-                assert!(stale.contains(&Slug::new("old")));
-                assert!(!stale.contains(&Slug::new("keep")));
-                assert!(!stale_entry.exists());
-                assert!(!stale_hash.exists());
-                assert!(keep_entry.exists());
-                assert!(keep_hash.exists());
+        assert!(stale.contains(&Slug::new("old")));
+        assert!(!stale.contains(&Slug::new("keep")));
+        assert!(!stale_entry.exists());
+        assert!(!stale_hash.exists());
+        assert!(keep_entry.exists());
+        assert!(keep_hash.exists());
 
-                let _ = fs::remove_dir_all(base);
-            },
-        );
-        let _ = fs::remove_dir_all(env_root);
+        let _ = fs::remove_dir_all(base);
     }
 }
