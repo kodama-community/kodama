@@ -441,21 +441,6 @@ fn find_tag_end(source: &str, mut idx: usize) -> Option<usize> {
     None
 }
 
-fn unescape_backslash(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars();
-    while let Some(ch) = chars.next() {
-        if ch == '\\' {
-            if let Some(next) = chars.next() {
-                out.push(next);
-                continue;
-            }
-        }
-        out.push(ch);
-    }
-    out
-}
-
 fn parse_attrs(attrs: &str) -> eyre::Result<HashMap<String, String>> {
     let bytes = attrs.as_bytes();
     let mut i = 0usize;
@@ -501,18 +486,25 @@ fn parse_attrs(attrs: &str) -> eyre::Result<HashMap<String, String>> {
             if bytes[i] == b'"' || bytes[i] == b'\'' {
                 let quote = bytes[i];
                 i += 1;
-                let start = i;
                 while i < bytes.len() && bytes[i] != quote {
-                    if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                    if bytes[i] == b'\\'
+                        && i + 1 < bytes.len()
+                        && (bytes[i + 1] == quote || bytes[i + 1] == b'\\')
+                    {
+                        value.push(bytes[i + 1] as char);
                         i += 2;
                     } else {
-                        i += 1;
+                        let ch = attrs[i..]
+                            .chars()
+                            .next()
+                            .expect("attribute scanning stays on char boundaries");
+                        value.push(ch);
+                        i += ch.len_utf8();
                     }
                 }
                 if i >= bytes.len() {
                     return Err(eyre!("malformed subtree tag attribute: unclosed quote"));
                 }
-                value = unescape_backslash(&attrs[start..i]);
                 i += 1;
             } else {
                 let start = i;
@@ -739,6 +731,37 @@ mod tests {
         assert_eq!(extracted.subtrees[0].tag, "remark");
         assert_eq!(extracted.subtrees[0].source_slug, Slug::new("doc/index"));
         assert_eq!(extracted.subtrees[0].source_pos, "2:1");
+    }
+
+    #[test]
+    fn test_extract_subtrees_preserves_backslashes_in_title() {
+        let source = r#"<block taxon="Step 1" title="$\sqrt{\Delta} \in F$">body</block>"#;
+        let extracted = extract_subtrees_root(source, Slug::new("doc/index")).unwrap();
+
+        assert_eq!(
+            extracted.subtrees[0].title.as_deref(),
+            Some(r"$\sqrt{\Delta} \in F$")
+        );
+        assert_eq!(extracted.subtrees[0].taxon.as_deref(), Some("Step 1"));
+    }
+
+    #[test]
+    fn test_extract_subtrees_unescapes_quotes_in_title() {
+        let source = r#"<remark slug="child" title="He said \"hi\"" >body</remark>"#;
+        let extracted = extract_subtrees_root(source, Slug::new("doc/index")).unwrap();
+
+        assert_eq!(extracted.subtrees[0].title.as_deref(), Some(r#"He said "hi""#));
+    }
+
+    #[test]
+    fn test_extract_subtrees_keeps_multibyte_chars_in_title() {
+        let source = r#"<remark slug="child" title="$\sqrt{\Delta} \in F$ 中文">body</remark>"#;
+        let extracted = extract_subtrees_root(source, Slug::new("doc/index")).unwrap();
+
+        assert_eq!(
+            extracted.subtrees[0].title.as_deref(),
+            Some(r"$\sqrt{\Delta} \in F$ 中文")
+        );
     }
 
     #[test]
