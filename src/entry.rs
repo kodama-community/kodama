@@ -12,12 +12,6 @@ use crate::{
 use eyre::eyre;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HTMLMetaData(pub OrderedMap<String, HTMLContent>);
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EntryMetaData(pub OrderedMap<String, String>);
-
 pub const KEY_TITLE: &str = "title";
 
 /// Auto-detected
@@ -73,8 +67,6 @@ pub const KEY_FOOTER_MODE: &str = "footer-mode";
 /// `footer-sort-by: <metadata-key>`
 pub const KEY_FOOTER_SORT_BY: &str = "footer-sort-by";
 
-const FANCY_METADATA: [&str; 2] = [KEY_TITLE, KEY_TAXON];
-
 const PLAIN_METADATA: [&str; 16] = [
     KEY_SLUG,
     KEY_EXT,
@@ -98,156 +90,272 @@ pub fn is_plain_metadata(s: &str) -> bool {
     PLAIN_METADATA.contains(&s)
 }
 
-pub fn is_fancy_metadata(s: &str) -> bool {
-    FANCY_METADATA.contains(&s)
-}
-
-pub fn is_custom_metadata(s: &str) -> bool {
-    !is_plain_metadata(s) && !is_fancy_metadata(s)
-}
-
-pub trait MetaData<V>
-where
-    V: Clone,
-{
-    fn get(&self, key: &str) -> Option<&V>;
-    fn get_str(&self, key: &str) -> Option<&str>;
-    fn keys(&self) -> impl Iterator<Item = &str>;
-
-    /// Return all custom metadata values.
-    fn etc(&self) -> Vec<V> {
-        self.keys()
-            .filter(|s| is_custom_metadata(s))
-            .filter_map(|s| self.get(s).cloned())
-            .collect()
+fn parse_bool_value(key: &str, value: &str, slug: Slug) -> eyre::Result<bool> {
+    match value {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(eyre!(
+            "invalid bool metadata in `{}`: `{}` = `{}` (expected `true` or `false`)",
+            slug,
+            key,
+            value
+        )),
     }
+}
 
-    fn get_bool(&self, key: &str) -> eyre::Result<Option<bool>> {
-        let Some(value) = self.get_str(key) else {
-            return Ok(None);
-        };
-        match value {
-            "true" => Ok(Some(true)),
-            "false" => Ok(Some(false)),
-            _ => {
-                let slug = self.get_str(KEY_SLUG).unwrap_or("<unknown>");
-                Err(eyre!(
-                    "invalid bool metadata in `{}`: `{}` = `{}` (expected `true` or `false`)",
-                    slug,
-                    key,
-                    value
-                ))
-            }
+fn parse_footer_mode_value(key: &str, value: &str, slug: Slug) -> eyre::Result<FooterMode> {
+    value.parse().map_err(|_| {
+        eyre!(
+            "invalid metadata in `{}`: `{}` = `{}` (expected `embed` or `link`)",
+            slug,
+            key,
+            value
+        )
+    })
+}
+
+fn parse_footer_sort_by(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+/// The built-in (plain) metadata fields, parsed and validated once at
+/// construction time instead of on every read.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BuiltinMeta {
+    pub slug: Option<Slug>,
+    pub ext: Option<String>,
+    pub parent: Option<Slug>,
+    pub page_title: Option<String>,
+    pub data_taxon: Option<String>,
+    pub source_slug: Option<String>,
+    pub source_pos: Option<String>,
+    /// Default: `true`
+    pub backlinks: bool,
+    /// Default: `false`
+    pub transparent_backlinks: bool,
+    /// Default: `true`
+    pub references: bool,
+    /// Default: `false`
+    pub collect: bool,
+    /// Default: `false`
+    pub internal_anon_subtree: bool,
+    /// No baked default: falls back to `environment::asref()` at the call site.
+    pub asref: Option<bool>,
+    /// No baked default: falls back to `true` at the call site.
+    pub asback: Option<bool>,
+    pub footer_mode: Option<FooterMode>,
+    pub footer_sort_by: Option<String>,
+}
+
+impl Default for BuiltinMeta {
+    fn default() -> Self {
+        BuiltinMeta {
+            slug: None,
+            ext: None,
+            parent: None,
+            page_title: None,
+            data_taxon: None,
+            source_slug: None,
+            source_pos: None,
+            backlinks: true,
+            transparent_backlinks: false,
+            references: true,
+            collect: false,
+            internal_anon_subtree: false,
+            asref: None,
+            asback: None,
+            footer_mode: None,
+            footer_sort_by: None,
         }
     }
+}
 
-    fn id(&self) -> eyre::Result<String> {
+impl BuiltinMeta {
+    /// Assign a plain built-in metadata key, validating its value.
+    ///
+    /// Returns `Ok(true)` when `key` is a built-in key (and thus consumed),
+    /// `Ok(false)` when it is not (the caller should treat it as fancy/custom).
+    pub fn assign(&mut self, key: &str, value: &str, slug: Slug) -> eyre::Result<bool> {
+        match key {
+            KEY_SLUG => self.slug = Some(Slug::new(value)),
+            KEY_EXT => self.ext = Some(value.to_string()),
+            KEY_PARENT => self.parent = Some(Slug::new(value)),
+            KEY_PAGE_TITLE => self.page_title = Some(value.to_string()),
+            KEY_DATA_TAXON => self.data_taxon = Some(value.to_string()),
+            KEY_SOURCE_SLUG => self.source_slug = Some(value.to_string()),
+            KEY_SOURCE_POS => self.source_pos = Some(value.to_string()),
+            KEY_BACKLINKS => self.backlinks = parse_bool_value(key, value, slug)?,
+            KEY_TRANSPARENT_BACKLINKS => {
+                self.transparent_backlinks = parse_bool_value(key, value, slug)?
+            }
+            KEY_REFERENCES => self.references = parse_bool_value(key, value, slug)?,
+            KEY_COLLECT => self.collect = parse_bool_value(key, value, slug)?,
+            KEY_INTERNAL_ANON_SUBTREE => {
+                self.internal_anon_subtree = parse_bool_value(key, value, slug)?
+            }
+            KEY_ASREF => self.asref = Some(parse_bool_value(key, value, slug)?),
+            KEY_ASBACK => self.asback = Some(parse_bool_value(key, value, slug)?),
+            KEY_FOOTER_MODE => self.footer_mode = Some(parse_footer_mode_value(key, value, slug)?),
+            KEY_FOOTER_SORT_BY => self.footer_sort_by = parse_footer_sort_by(value),
+            _ => return Ok(false),
+        }
+        Ok(true)
+    }
+}
+
+/// Section metadata. The built-in fields live in [`BuiltinMeta`], while the two
+/// rich fields (`title`, `taxon`) and all custom keys are generic over the value
+/// type: [`HTMLContent`] before resolution, `String` after.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MetaData<V: Clone> {
+    pub builtin: BuiltinMeta,
+    pub title: Option<V>,
+    pub taxon: Option<V>,
+    pub custom: OrderedMap<String, V>,
+}
+
+/// Unresolved (parse-stage) metadata. `title`/`taxon` and custom values may
+/// still contain unresolved embeds/local links.
+pub type HTMLMetaData = MetaData<HTMLContent>;
+
+/// Compiled metadata. Every value has been resolved to a plain string.
+pub type EntryMetaData = MetaData<String>;
+
+impl<V: Clone> Default for MetaData<V> {
+    fn default() -> Self {
+        MetaData {
+            builtin: BuiltinMeta::default(),
+            title: None,
+            taxon: None,
+            custom: OrderedMap::new(),
+        }
+    }
+}
+
+impl<V: Clone> MetaData<V> {
+    pub fn title(&self) -> Option<&V> {
+        self.title.as_ref()
+    }
+
+    pub fn taxon(&self) -> Option<&V> {
+        self.taxon.as_ref()
+    }
+
+    pub fn data_taxon(&self) -> Option<&str> {
+        self.builtin.data_taxon.as_deref()
+    }
+
+    pub fn page_title(&self) -> Option<&str> {
+        self.builtin.page_title.as_deref()
+    }
+
+    pub fn parent(&self) -> Option<Slug> {
+        self.builtin.parent
+    }
+
+    pub fn slug(&self) -> Option<Slug> {
+        self.builtin.slug
+    }
+
+    pub fn ext(&self) -> Option<&str> {
+        self.builtin.ext.as_deref()
+    }
+
+    pub fn source_slug(&self) -> Option<&str> {
+        self.builtin.source_slug.as_deref()
+    }
+
+    pub fn source_pos(&self) -> Option<&str> {
+        self.builtin.source_pos.as_deref()
+    }
+
+    pub fn backlinks_enabled(&self) -> bool {
+        self.builtin.backlinks
+    }
+
+    pub fn is_backlinks_transparent(&self) -> bool {
+        self.builtin.transparent_backlinks
+    }
+
+    pub fn references_enabled(&self) -> bool {
+        self.builtin.references
+    }
+
+    pub fn is_collect(&self) -> bool {
+        self.builtin.collect
+    }
+
+    pub fn internal_anon_subtree(&self) -> bool {
+        self.builtin.internal_anon_subtree
+    }
+
+    pub fn is_asref(&self) -> Option<bool> {
+        self.builtin.asref
+    }
+
+    pub fn is_asback(&self) -> Option<bool> {
+        self.builtin.asback
+    }
+
+    pub fn footer_mode(&self) -> Option<FooterMode> {
+        self.builtin.footer_mode
+    }
+
+    pub fn footer_sort_by(&self) -> Option<String> {
+        self.builtin.footer_sort_by.clone()
+    }
+
+    /// Return all custom metadata values.
+    pub fn etc(&self) -> Vec<V> {
+        self.custom.values().cloned().collect()
+    }
+
+    pub fn id(&self) -> eyre::Result<String> {
         let slug = self
-            .get_str(KEY_SLUG)
+            .builtin
+            .slug
             .ok_or_else(|| eyre!("missing required metadata `slug` while rendering section id"))?;
-        Ok(crate::slug::to_hash_id(slug))
-    }
-
-    /// Return taxon text
-    fn taxon(&self) -> Option<&V> {
-        self.get(KEY_TAXON)
-    }
-
-    fn data_taxon(&self) -> Option<&str> {
-        self.get_str(KEY_DATA_TAXON)
-    }
-
-    fn parent(&self) -> Option<Slug> {
-        self.get_str(KEY_PARENT).map(Slug::new)
-    }
-
-    fn title(&self) -> Option<&V> {
-        self.get(KEY_TITLE)
-    }
-
-    fn page_title(&self) -> Option<&str> {
-        self.get_str(KEY_PAGE_TITLE)
-    }
-
-    fn slug(&self) -> Option<Slug> {
-        self.get_str(KEY_SLUG).map(Slug::new)
-    }
-
-    fn ext(&self) -> Option<&str> {
-        self.get_str(KEY_EXT)
-    }
-
-    fn backlinks_enabled(&self) -> eyre::Result<bool> {
-        self.get_bool(KEY_BACKLINKS).map(|v| v.unwrap_or(true))
-    }
-
-    fn is_backlinks_transparent(&self) -> eyre::Result<bool> {
-        self.get_bool(KEY_TRANSPARENT_BACKLINKS)
-            .map(|v| v.unwrap_or(false))
-    }
-
-    fn references_enabled(&self) -> eyre::Result<bool> {
-        self.get_bool(KEY_REFERENCES).map(|v| v.unwrap_or(true))
-    }
-
-    fn is_collect(&self) -> eyre::Result<bool> {
-        self.get_bool(KEY_COLLECT).map(|v| v.unwrap_or(false))
-    }
-
-    fn is_asref(&self) -> eyre::Result<Option<bool>> {
-        self.get_bool(KEY_ASREF)
-    }
-
-    fn is_asback(&self) -> eyre::Result<Option<bool>> {
-        self.get_bool(KEY_ASBACK)
+        Ok(crate::slug::to_hash_id(slug.as_str()))
     }
 }
 
-impl MetaData<HTMLContent> for HTMLMetaData {
-    fn get(&self, key: &str) -> Option<&HTMLContent> {
-        self.0.get(key)
-    }
-
-    fn get_str(&self, key: &str) -> Option<&str> {
-        self.0.get(key).and_then(HTMLContent::as_str)
-    }
-
-    fn keys(&self) -> impl Iterator<Item = &str> {
-        self.0.keys().map(String::as_str)
-    }
-}
-
-impl MetaData<String> for EntryMetaData {
-    fn get(&self, key: &str) -> Option<&String> {
-        self.0.get(key)
-    }
-
-    fn get_str(&self, key: &str) -> Option<&str> {
-        self.0.get(key).map(String::as_str)
-    }
-
-    fn keys(&self) -> impl Iterator<Item = &str> {
-        self.0.keys().map(String::as_str)
+impl MetaData<String> {
+    /// Read a custom metadata key by name.
+    pub fn get_str(&self, key: &str) -> Option<&str> {
+        self.custom.get(key).map(String::as_str)
     }
 }
 
 impl HTMLMetaData {
+    pub fn with_slug_ext(slug: Slug, ext: impl Into<String>) -> HTMLMetaData {
+        HTMLMetaData {
+            builtin: BuiltinMeta {
+                slug: Some(slug),
+                ext: Some(ext.into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
     pub fn compute_textual_attrs(&mut self) {
-        if self.page_title().is_none() {
-            if let Some(title) = self.title() {
-                self.0.insert(
-                    KEY_PAGE_TITLE.to_string(),
-                    HTMLContent::Plain(title.remove_all_tags()),
-                );
+        if self.builtin.page_title.is_none() {
+            if let Some(title) = &self.title {
+                self.builtin.page_title = Some(title.remove_all_tags());
             }
         }
 
-        if self.data_taxon().is_none() {
-            if let Some(taxon) = self.taxon() {
-                self.0.insert(
-                    KEY_DATA_TAXON.to_string(),
-                    HTMLContent::Plain(Taxon::to_data_taxon(&taxon.remove_all_tags()).to_string()),
-                );
+        if self.builtin.data_taxon.is_none() {
+            if let Some(taxon) = &self.taxon {
+                self.builtin.data_taxon =
+                    Some(Taxon::to_data_taxon(&taxon.remove_all_tags()).to_string());
             }
         }
     }
@@ -259,9 +367,9 @@ impl EntryMetaData {
         adhoc_title: Option<&str>,
         adhoc_taxon: Option<&str>,
     ) -> eyre::Result<String> {
-        let entry_taxon = self.taxon().map_or("", |s| s);
+        let entry_taxon = self.taxon().map_or("", |s| s.as_str());
         let taxon = adhoc_taxon.unwrap_or(entry_taxon);
-        let entry_title = self.0.get("title").map(|s| s.as_str()).unwrap_or("");
+        let entry_title = self.title().map_or("", |s| s.as_str());
         let title = adhoc_title.unwrap_or(entry_title);
         let slug = self
             .slug()
@@ -272,7 +380,7 @@ impl EntryMetaData {
                 slug
             )
         })?;
-        let show_slug = !self.get_bool(KEY_INTERNAL_ANON_SUBTREE)?.unwrap_or(false);
+        let show_slug = !self.builtin.internal_anon_subtree;
         let etc = self.etc();
 
         Ok(html_flake::html_header(html_flake::HtmlHeaderArgs {
@@ -281,8 +389,8 @@ impl EntryMetaData {
             slug: &slug,
             ext,
             show_slug,
-            source_slug: self.get_str(KEY_SOURCE_SLUG),
-            source_pos: self.get_str(KEY_SOURCE_POS),
+            source_slug: self.source_slug(),
+            source_pos: self.source_pos(),
             etc: &etc,
         }))
     }
@@ -297,28 +405,18 @@ impl EntryMetaData {
         }
         slug_text.to_string()
     }
+}
 
-    pub fn update(&mut self, key: String, value: String) {
-        let _ = self.0.insert(key, value);
-    }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    pub fn footer_mode(&self) -> eyre::Result<Option<FooterMode>> {
-        let Some(value) = self.get_str(KEY_FOOTER_MODE) else {
-            return Ok(None);
-        };
-        value.parse().map(Some).map_err(|_| {
-            let slug = self.get_str(KEY_SLUG).unwrap_or("<unknown>");
-            eyre!(
-                "invalid metadata in `{}`: `footer-mode = {}` (expected `embed` or `link`)",
-                slug,
-                value
-            )
-        })
-    }
-
-    pub fn footer_sort_by(&self) -> Option<String> {
-        self.get_str(KEY_FOOTER_SORT_BY)
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
+    #[test]
+    fn test_assign_rejects_invalid_bool() {
+        let mut builtin = BuiltinMeta::default();
+        let err = builtin
+            .assign(KEY_REFERENCES, "maybe", Slug::new("a"))
+            .unwrap_err();
+        assert!(err.to_string().contains("invalid bool metadata"));
     }
 }

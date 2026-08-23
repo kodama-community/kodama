@@ -179,7 +179,19 @@ fn resolve_inline_typst_content(content: &mut HTMLContent, results: &[String]) {
 /// metadata values) using the results of the current phase's batch.
 pub fn resolve_inline_typst_section(section: &mut UnresolvedSection, results: &[String]) {
     resolve_inline_typst_content(&mut section.content, results);
-    for (_, value) in section.metadata.0.iter_mut() {
+    if let Some(title) = &mut section.metadata.title {
+        resolve_inline_typst_content(title, results);
+    }
+    if let Some(taxon) = &mut section.metadata.taxon {
+        resolve_inline_typst_content(taxon, results);
+    }
+    if let Some(page_title) = &mut section.metadata.builtin.page_title {
+        resolve_inline_placeholder(page_title, results);
+    }
+    if let Some(data_taxon) = &mut section.metadata.builtin.data_taxon {
+        resolve_inline_placeholder(data_taxon, results);
+    }
+    for value in section.metadata.custom.values_mut() {
         resolve_inline_typst_content(value, results);
     }
 }
@@ -206,7 +218,6 @@ mod tests {
     use crate::{
         compiler::section::{LazyContent, UnresolvedSection},
         entry::HTMLMetaData,
-        ordered_map::OrderedMap,
     };
 
     #[test]
@@ -238,11 +249,17 @@ mod tests {
     #[test]
     fn test_resolve_inline_typst_section_replaces_placeholders_in_content_and_metadata() {
         let results = vec!["<svg>a</svg>".to_string(), "<svg>b</svg>".to_string()];
+        let metadata = HTMLMetaData {
+            builtin: crate::entry::BuiltinMeta {
+                page_title: Some(format!("{INLINE_PLACEHOLDER}1\u{0}")),
+                data_taxon: Some(format!("{INLINE_PLACEHOLDER}1\u{0}")),
+                ..Default::default()
+            },
+            title: Some(HTMLContent::Plain(format!("{INLINE_PLACEHOLDER}1\u{0}"))),
+            ..Default::default()
+        };
         let mut section = UnresolvedSection {
-            metadata: HTMLMetaData(OrderedMap::from_iter([(
-                "title".to_string(),
-                HTMLContent::Plain(format!("{INLINE_PLACEHOLDER}1\u{0}")),
-            )])),
+            metadata,
             content: HTMLContent::Lazy(vec![LazyContent::Plain(format!(
                 "x {INLINE_PLACEHOLDER}0\u{0} y"
             ))]),
@@ -261,14 +278,22 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert_eq!(resolved, vec!["x <svg>a</svg> y"]);
-        let title = section.metadata.0.get("title").expect("title");
+        let title = section.metadata.title.as_ref().expect("title");
         assert_eq!(title.as_str(), Some("<svg>b</svg>"));
+        assert_eq!(
+            section.metadata.builtin.page_title.as_deref(),
+            Some("<svg>b</svg>")
+        );
+        assert_eq!(
+            section.metadata.builtin.data_taxon.as_deref(),
+            Some("<svg>b</svg>")
+        );
     }
 
     #[test]
     fn test_resolve_inline_typst_section_ignores_unknown_index() {
         let mut section = UnresolvedSection {
-            metadata: HTMLMetaData(OrderedMap::new()),
+            metadata: HTMLMetaData::default(),
             content: HTMLContent::Plain(format!("{INLINE_PLACEHOLDER}9\u{0}",)),
         };
         resolve_inline_typst_section(&mut section, &["ok".to_string()]);

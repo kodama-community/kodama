@@ -6,15 +6,7 @@ use std::collections::{HashMap, HashSet};
 
 use eyre::{eyre, WrapErr};
 
-use crate::{
-    entry::{
-        MetaData, KEY_EXT, KEY_INTERNAL_ANON_SUBTREE, KEY_SLUG, KEY_SOURCE_POS, KEY_SOURCE_SLUG,
-        KEY_TAXON, KEY_TITLE,
-    },
-    line_index::LineIndex,
-    process::metadata,
-    slug::Slug,
-};
+use crate::{line_index::LineIndex, process::metadata, slug::Slug};
 
 use crate::compiler::{
     anonymous_slug::{anonymous_slug_for, ANON_SUBTREE_ORDINAL_INITIAL},
@@ -589,35 +581,17 @@ pub(super) fn patch_root_subtree_embeds(
 }
 
 pub(super) fn apply_subtree_defaults(section: &mut UnresolvedSection, spec: &SubtreeSpec) {
-    section.metadata.0.insert(
-        KEY_SLUG.to_string(),
-        HTMLContent::Plain(spec.slug.to_string()),
-    );
-    section
-        .metadata
-        .0
-        .insert(KEY_EXT.to_string(), HTMLContent::Plain("md".to_string()));
-    section.metadata.0.insert(
-        KEY_SOURCE_SLUG.to_string(),
-        HTMLContent::Plain(spec.source_slug.to_string()),
-    );
-    section.metadata.0.insert(
-        KEY_SOURCE_POS.to_string(),
-        HTMLContent::Plain(spec.source_pos.clone()),
-    );
+    section.metadata.builtin.slug = Some(spec.slug);
+    section.metadata.builtin.ext = Some("md".to_string());
+    section.metadata.builtin.source_slug = Some(spec.source_slug.to_string());
+    section.metadata.builtin.source_pos = Some(spec.source_pos.clone());
     if spec.anonymous {
-        section.metadata.0.insert(
-            KEY_INTERNAL_ANON_SUBTREE.to_string(),
-            HTMLContent::Plain("true".to_string()),
-        );
+        section.metadata.builtin.internal_anon_subtree = true;
     }
 
     if section.metadata.title().is_none() {
         if let Some(title) = &spec.title {
-            section
-                .metadata
-                .0
-                .insert(KEY_TITLE.to_string(), HTMLContent::Plain(title.clone()));
+            section.metadata.title = Some(HTMLContent::Plain(title.clone()));
         }
     }
 
@@ -633,10 +607,7 @@ pub(super) fn apply_subtree_defaults(section: &mut UnresolvedSection, spec: &Sub
             .or(default_taxon)
             .map(metadata::display_taxon);
         if let Some(taxon) = taxon {
-            section
-                .metadata
-                .0
-                .insert(KEY_TAXON.to_string(), HTMLContent::Plain(taxon));
+            section.metadata.taxon = Some(HTMLContent::Plain(taxon));
         }
     }
 }
@@ -648,11 +619,7 @@ mod tests {
     use super::super::{parse_markdown_sections_from_source, parse_markdown_source};
     use super::*;
     use crate::compiler::anonymous_slug::{ANON_SUBTREE_ORDINAL_INITIAL, ANON_SUBTREE_SLUG_PREFIX};
-    use crate::{
-        compiler::HTMLContent,
-        entry::{MetaData, KEY_INTERNAL_ANON_SUBTREE, KEY_SOURCE_POS, KEY_SOURCE_SLUG},
-        slug::Slug,
-    };
+    use crate::{compiler::HTMLContent, slug::Slug};
 
     #[test]
     fn test_extract_shared_reference_definitions_skips_fenced_code() {
@@ -750,7 +717,10 @@ mod tests {
         let source = r#"<remark slug="child" title="He said \"hi\"" >body</remark>"#;
         let extracted = extract_subtrees_root(source, Slug::new("doc/index")).unwrap();
 
-        assert_eq!(extracted.subtrees[0].title.as_deref(), Some(r#"He said "hi""#));
+        assert_eq!(
+            extracted.subtrees[0].title.as_deref(),
+            Some(r#"He said "hi""#)
+        );
     }
 
     #[test]
@@ -843,11 +813,7 @@ anonymous body
             .collect();
         assert_eq!(embed_urls.len(), 1);
         assert!(embed_urls[0].contains(ANON_SUBTREE_SLUG_PREFIX));
-        assert!(anonymous
-            .metadata
-            .get(KEY_INTERNAL_ANON_SUBTREE)
-            .and_then(HTMLContent::as_str)
-            .is_some_and(|v| v == "true"));
+        assert!(anonymous.metadata.internal_anon_subtree());
     }
 
     #[test]
@@ -888,20 +854,8 @@ child body
             child.metadata.title().and_then(HTMLContent::as_str),
             Some("Child")
         );
-        assert_eq!(
-            child
-                .metadata
-                .get(KEY_SOURCE_SLUG)
-                .and_then(HTMLContent::as_str),
-            Some("book/index")
-        );
-        assert_eq!(
-            child
-                .metadata
-                .get(KEY_SOURCE_POS)
-                .and_then(HTMLContent::as_str),
-            Some("5:1")
-        );
+        assert_eq!(child.metadata.source_slug(), Some("book/index"));
+        assert_eq!(child.metadata.source_pos(), Some("5:1"));
     }
 
     #[test]
@@ -974,14 +928,7 @@ outer
 
         let anonymous = sections
             .iter()
-            .find_map(|(_, section)| {
-                section
-                    .metadata
-                    .get(KEY_INTERNAL_ANON_SUBTREE)
-                    .and_then(HTMLContent::as_str)
-                    .is_some_and(|value| value == "true")
-                    .then_some(section)
-            })
+            .find_map(|(_, section)| section.metadata.internal_anon_subtree().then_some(section))
             .expect("anonymous wrapper section should exist");
         let HTMLContent::Lazy(contents) = &anonymous.content else {
             panic!("expected lazy anonymous content with nested subtree embed");
@@ -1010,14 +957,7 @@ outer
         let sections = parse_markdown_sections_from_source(source, Slug::new("GALA")).unwrap();
         let anonymous_slugs: Vec<Slug> = sections
             .iter()
-            .filter_map(|(slug, section)| {
-                section
-                    .metadata
-                    .get(KEY_INTERNAL_ANON_SUBTREE)
-                    .and_then(HTMLContent::as_str)
-                    .is_some_and(|value| value == "true")
-                    .then_some(*slug)
-            })
+            .filter_map(|(slug, section)| section.metadata.internal_anon_subtree().then_some(*slug))
             .collect();
 
         assert_eq!(anonymous_slugs.len(), 4);

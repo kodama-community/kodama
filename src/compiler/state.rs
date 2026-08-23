@@ -10,13 +10,8 @@ use std::{
 
 use crate::{
     config::build::FooterMode,
-    entry::{
-        is_plain_metadata, EntryMetaData, HTMLMetaData, MetaData, KEY_EXT,
-        KEY_INTERNAL_ANON_SUBTREE, KEY_SLUG, KEY_TITLE,
-    },
-    environment,
-    ordered_map::OrderedMap,
-    path_utils,
+    entry::{EntryMetaData, HTMLMetaData},
+    environment, path_utils,
     slug::{self, Slug},
 };
 
@@ -171,9 +166,7 @@ impl CompileState {
                             let mut child_section = refered.clone();
                             child_section.option = embed_content.option;
                             if let Some(title) = &embed_content.title {
-                                child_section
-                                    .metadata
-                                    .update(KEY_TITLE.to_owned(), title.clone())
+                                child_section.metadata.title = Some(title.clone());
                             };
                             children.push(SectionContent::Embed(child_section));
                         }
@@ -192,7 +185,7 @@ impl CompileState {
                                 .map(strip_html_tags)
                                 .unwrap_or_else(|| article_title_plain.clone());
 
-                            if link_slug != slug && is_reference(shallows, link_slug)? {
+                            if link_slug != slug && is_reference(shallows, link_slug) {
                                 references.insert(link_slug);
                             }
 
@@ -200,8 +193,8 @@ impl CompileState {
                              * Making oneself the content of a backlink should not be expected behavior.
                              */
                             if link_slug != slug
-                                && backlinks_enabled(shallows, link_slug)?
-                                && is_backlink(shallows, slug)?
+                                && backlinks_enabled(shallows, link_slug)
+                                && is_backlink(shallows, slug)
                             {
                                 callback.insert_backlinks(link_slug, vec![slug]);
                             }
@@ -227,38 +220,22 @@ impl CompileState {
             self.callback.specify_parent(slug, parent);
         }
 
-        // compile metadata
-        let mut metadata = EntryMetaData(OrderedMap::new());
-        for key in spanned.metadata.keys() {
-            let Some(value) = spanned.metadata.get(key) else {
-                return Err(eyre!(
-                    "metadata key `{}` vanished while compiling `{}`",
-                    key,
-                    slug
-                ));
-            };
-            if is_plain_metadata(key) {
-                if let Some(val) = value.as_str() {
-                    metadata.update(key.to_owned(), val.to_owned());
-                } else {
-                    return Err(eyre!(
-                        "metadata field `{}` in `{}` is expected to be plain text",
-                        key,
-                        slug
-                    ));
-                }
-            } else {
-                let spanned: UnresolvedSection = Self::metadata_to_section(value, slug, ext);
-                self.compile_unresolved(shallows, &spanned)?;
-                let compiled = self.compiled.get(&slug).ok_or_else(|| {
-                    eyre!(
-                        "compiled section `{}` disappeared while compiling metadata",
-                        slug
-                    )
-                })?;
-                let html = compiled.spanned();
-                metadata.update(key.to_owned(), html);
-            };
+        // compile metadata: built-in fields are already parsed and validated at
+        // the parse stage; only the rich (`title`/`taxon`) and custom values
+        // still need resolution from `HTMLContent` into plain strings.
+        let mut metadata = EntryMetaData {
+            builtin: spanned.metadata.builtin.clone(),
+            ..Default::default()
+        };
+        if let Some(title) = &spanned.metadata.title {
+            metadata.title = Some(self.resolve_metadata_value(shallows, slug, ext, title)?);
+        }
+        if let Some(taxon) = &spanned.metadata.taxon {
+            metadata.taxon = Some(self.resolve_metadata_value(shallows, slug, ext, taxon)?);
+        }
+        for (key, value) in &spanned.metadata.custom {
+            let html = self.resolve_metadata_value(shallows, slug, ext, value)?;
+            metadata.custom.insert(key.clone(), html);
         }
 
         // remove from `self.residued` after compiled.
@@ -269,23 +246,31 @@ impl CompileState {
         Ok(())
     }
 
+    fn resolve_metadata_value(
+        &mut self,
+        shallows: &UnresolvedSections,
+        slug: Slug,
+        ext: &str,
+        value: &HTMLContent,
+    ) -> eyre::Result<String> {
+        let spanned = Self::metadata_to_section(value, slug, ext);
+        self.compile_unresolved(shallows, &spanned)?;
+        let compiled = self.compiled.get(&slug).ok_or_else(|| {
+            eyre!(
+                "compiled section `{}` disappeared while compiling metadata",
+                slug
+            )
+        })?;
+        Ok(compiled.spanned())
+    }
+
     fn metadata_to_section(
         content: &HTMLContent,
         current_slug: Slug,
         current_ext: &str,
     ) -> UnresolvedSection {
-        let mut metadata = OrderedMap::new();
-        metadata.insert(
-            KEY_SLUG.to_string(),
-            HTMLContent::Plain(current_slug.to_string()),
-        );
-        metadata.insert(
-            KEY_EXT.to_string(),
-            HTMLContent::Plain(current_ext.to_string()),
-        );
-
         UnresolvedSection {
-            metadata: HTMLMetaData(metadata),
+            metadata: HTMLMetaData::with_slug_ext(current_slug, current_ext),
             content: content.clone(),
         }
     }
@@ -341,13 +326,7 @@ impl CompileState {
     fn collect_internal_anonymous_slugs(&self) -> HashSet<Slug> {
         self.compiled
             .iter()
-            .filter_map(|(&slug, section)| {
-                section
-                    .metadata
-                    .get_str(KEY_INTERNAL_ANON_SUBTREE)
-                    .is_some_and(|value| value == "true")
-                    .then_some(slug)
-            })
+            .filter_map(|(&slug, section)| section.metadata.internal_anon_subtree().then_some(slug))
             .collect()
     }
 
@@ -395,31 +374,28 @@ fn strip_html_tags(text: &str) -> String {
     HTMLContent::Plain(text.to_string()).remove_all_tags()
 }
 
-fn backlinks_enabled(shallows: &UnresolvedSections, slug: Slug) -> eyre::Result<bool> {
+fn backlinks_enabled(shallows: &UnresolvedSections, slug: Slug) -> bool {
     match shallows.get(&slug) {
         Some(section) => section.metadata.backlinks_enabled(),
-        None => Ok(true),
+        None => true,
     }
 }
 
-fn is_reference(shallows: &UnresolvedSections, slug: Slug) -> eyre::Result<bool> {
+fn is_reference(shallows: &UnresolvedSections, slug: Slug) -> bool {
     match shallows.get(&slug) {
         Some(section) => {
             let metadata = &section.metadata;
-            Ok(metadata.is_asref()?.unwrap_or(environment::asref())
-                || Taxon::is_reference(metadata.data_taxon().unwrap_or("")))
+            metadata.is_asref().unwrap_or(environment::asref())
+                || Taxon::is_reference(metadata.data_taxon().unwrap_or(""))
         }
-        None => Ok(false),
+        None => false,
     }
 }
 
-fn is_backlink(shallows: &UnresolvedSections, slug: Slug) -> eyre::Result<bool> {
+fn is_backlink(shallows: &UnresolvedSections, slug: Slug) -> bool {
     match shallows.get(&slug) {
-        Some(section) => {
-            let metadata = &section.metadata;
-            Ok(metadata.is_asback()?.unwrap_or(true))
-        }
-        None => Ok(false),
+        Some(section) => section.metadata.is_asback().unwrap_or(true),
+        None => false,
     }
 }
 
@@ -427,18 +403,10 @@ fn is_backlink(shallows: &UnresolvedSections, slug: Slug) -> eyre::Result<bool> 
 mod tests {
     use super::super::section::{EmbedContent, LocalLink, SectionOption};
     use super::*;
-    use crate::{
-        entry::{KEY_ASREF, KEY_INTERNAL_ANON_SUBTREE},
-        ordered_map::OrderedMap,
-    };
 
     fn shallow_with_content(slug: &str, content: HTMLContent) -> UnresolvedSection {
-        let mut metadata = OrderedMap::new();
-        metadata.insert(KEY_SLUG.to_string(), HTMLContent::Plain(slug.to_string()));
-        metadata.insert(KEY_EXT.to_string(), HTMLContent::Plain("md".to_string()));
-
         UnresolvedSection {
-            metadata: HTMLMetaData(metadata),
+            metadata: HTMLMetaData::with_slug_ext(Slug::new(slug), "md"),
             content,
         }
     }
@@ -494,27 +462,15 @@ mod tests {
             ),
         );
 
-        let mut target_metadata = OrderedMap::new();
-        target_metadata.insert(
-            KEY_SLUG.to_string(),
-            HTMLContent::Plain("target".to_string()),
-        );
-        target_metadata.insert(KEY_EXT.to_string(), HTMLContent::Plain("md".to_string()));
-        target_metadata.insert(
-            KEY_TITLE.to_string(),
-            HTMLContent::Plain(r#"<span lang="zh">abc</span>"#.to_string()),
-        );
-        target_metadata.insert(
-            crate::entry::KEY_PAGE_TITLE.to_string(),
-            HTMLContent::Plain(r#"<span lang="zh">abc</span>"#.to_string()),
-        );
-        shallows.insert(
-            Slug::new("target"),
-            UnresolvedSection {
-                metadata: HTMLMetaData(target_metadata),
-                content: HTMLContent::Plain(String::new()),
-            },
-        );
+        let mut target = UnresolvedSection {
+            metadata: HTMLMetaData::with_slug_ext(Slug::new("target"), "md"),
+            content: HTMLContent::Plain(String::new()),
+        };
+        target.metadata.title = Some(HTMLContent::Plain(
+            r#"<span lang="zh">abc</span>"#.to_string(),
+        ));
+        target.metadata.builtin.page_title = Some(r#"<span lang="zh">abc</span>"#.to_string());
+        shallows.insert(Slug::new("target"), target);
 
         let state = compile_all_without_missing_index_warning(&shallows).unwrap();
         let html = state
@@ -536,44 +492,25 @@ mod tests {
     fn test_metadata_local_link_without_text_uses_target_title() {
         let mut shallows = HashMap::new();
 
-        let mut index_metadata = OrderedMap::new();
-        index_metadata.insert(
-            KEY_SLUG.to_string(),
-            HTMLContent::Plain("index".to_string()),
-        );
-        index_metadata.insert(KEY_EXT.to_string(), HTMLContent::Plain("typst".to_string()));
-        index_metadata.insert(
+        let mut index = UnresolvedSection {
+            metadata: HTMLMetaData::with_slug_ext(Slug::new("index"), "typst"),
+            content: HTMLContent::Plain(String::new()),
+        };
+        index.metadata.custom.insert(
             "author".to_string(),
             HTMLContent::Lazy(vec![LazyContent::Local(LocalLink {
                 url: "/kokic".to_string(),
                 text: None,
             })]),
         );
-        shallows.insert(
-            Slug::new("index"),
-            UnresolvedSection {
-                metadata: HTMLMetaData(index_metadata),
-                content: HTMLContent::Plain(String::new()),
-            },
-        );
+        shallows.insert(Slug::new("index"), index);
 
-        let mut target_metadata = OrderedMap::new();
-        target_metadata.insert(
-            KEY_SLUG.to_string(),
-            HTMLContent::Plain("kokic".to_string()),
-        );
-        target_metadata.insert(KEY_EXT.to_string(), HTMLContent::Plain("md".to_string()));
-        target_metadata.insert(
-            KEY_TITLE.to_string(),
-            HTMLContent::Plain("Kokic".to_string()),
-        );
-        shallows.insert(
-            Slug::new("kokic"),
-            UnresolvedSection {
-                metadata: HTMLMetaData(target_metadata),
-                content: HTMLContent::Plain(String::new()),
-            },
-        );
+        let mut target = UnresolvedSection {
+            metadata: HTMLMetaData::with_slug_ext(Slug::new("kokic"), "md"),
+            content: HTMLContent::Plain(String::new()),
+        };
+        target.metadata.title = Some(HTMLContent::Plain("Kokic".to_string()));
+        shallows.insert(Slug::new("kokic"), target);
 
         let state = compile_all_without_missing_index_warning(&shallows).unwrap();
         let author = state
@@ -601,14 +538,8 @@ mod tests {
         );
 
         let mut anon = shallow_with_content("anon", HTMLContent::Plain("<p>anon</p>".to_string()));
-        anon.metadata.0.insert(
-            KEY_INTERNAL_ANON_SUBTREE.to_string(),
-            HTMLContent::Plain("true".to_string()),
-        );
-        anon.metadata.0.insert(
-            KEY_ASREF.to_string(),
-            HTMLContent::Plain("true".to_string()),
-        );
+        anon.metadata.builtin.internal_anon_subtree = true;
+        anon.metadata.builtin.asref = Some(true);
         shallows.insert(Slug::new("anon"), anon);
 
         let state = compile_all_without_missing_index_warning(&shallows).unwrap();
@@ -640,10 +571,7 @@ mod tests {
                 text: None,
             })]),
         );
-        anon.metadata.0.insert(
-            KEY_INTERNAL_ANON_SUBTREE.to_string(),
-            HTMLContent::Plain("true".to_string()),
-        );
+        anon.metadata.builtin.internal_anon_subtree = true;
         shallows.insert(Slug::new("anon"), anon);
         shallows.insert(
             Slug::new("target"),
@@ -679,10 +607,7 @@ mod tests {
                 option: SectionOption::default(),
             })]),
         );
-        anon.metadata.0.insert(
-            KEY_INTERNAL_ANON_SUBTREE.to_string(),
-            HTMLContent::Plain("true".to_string()),
-        );
+        anon.metadata.builtin.internal_anon_subtree = true;
         shallows.insert(Slug::new("anon"), anon);
         shallows.insert(
             Slug::new("child"),

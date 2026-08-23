@@ -3,11 +3,7 @@
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
 use crate::{
-    compiler::section::HTMLContent,
-    entry::{EntryMetaData, MetaData},
-    environment,
-    html_macro::html,
-    slug::Slug,
+    compiler::section::HTMLContent, entry::EntryMetaData, environment, html_macro::html, slug::Slug,
 };
 
 const CATALOG_BULLET_SYMBOL: &str = "\u{25A0}"; // ■

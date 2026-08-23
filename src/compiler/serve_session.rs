@@ -183,18 +183,14 @@ impl ServeCompileSession {
 mod tests {
     use crate::{
         compiler::section::{HTMLContent, UnresolvedSection},
-        entry::{HTMLMetaData, KEY_EXT, KEY_SLUG},
-        ordered_map::OrderedMap,
+        entry::HTMLMetaData,
     };
 
     use super::*;
 
     fn shallow(slug: &str, ext: &str) -> UnresolvedSection {
-        let mut metadata = OrderedMap::new();
-        metadata.insert(KEY_SLUG.to_string(), HTMLContent::Plain(slug.to_string()));
-        metadata.insert(KEY_EXT.to_string(), HTMLContent::Plain(ext.to_string()));
         UnresolvedSection {
-            metadata: HTMLMetaData(metadata),
+            metadata: HTMLMetaData::with_slug_ext(Slug::new(slug), ext),
             content: HTMLContent::Plain(String::new()),
         }
     }

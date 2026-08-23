@@ -5,7 +5,7 @@
 use eyre::eyre;
 use url::Url;
 
-use crate::{entry::MetaData, environment, slug::Slug};
+use crate::{environment, slug::Slug};
 
 use super::{state::CompileState, writer::Writer};
 
@@ -100,7 +100,7 @@ fn collect_items(state: &CompileState) -> eyre::Result<Vec<FeedItem>> {
     let mut items = Vec::new();
 
     for (&slug, section) in state.compiled() {
-        if slug == index_slug || section.metadata.is_collect()? {
+        if slug == index_slug || section.metadata.is_collect() {
             continue;
         }
 
@@ -358,8 +358,7 @@ mod tests {
             section::{EmbedContent, HTMLContent, LazyContent, SectionOption, UnresolvedSection},
             state::compile_all_without_missing_index_warning,
         },
-        entry::{HTMLMetaData, KEY_COLLECT, KEY_EXT, KEY_PAGE_TITLE, KEY_SLUG},
-        ordered_map::OrderedMap,
+        entry::HTMLMetaData,
     };
 
     use super::*;
@@ -370,19 +369,16 @@ mod tests {
         date: Option<&str>,
         content_html: &str,
     ) -> UnresolvedSection {
-        let mut metadata = OrderedMap::new();
-        metadata.insert(KEY_SLUG.to_string(), HTMLContent::Plain(slug.to_string()));
-        metadata.insert(KEY_EXT.to_string(), HTMLContent::Plain("md".to_string()));
-        metadata.insert(
-            KEY_PAGE_TITLE.to_string(),
-            HTMLContent::Plain(page_title.to_string()),
-        );
+        let mut metadata = HTMLMetaData::with_slug_ext(Slug::new(slug), "md");
+        metadata.builtin.page_title = Some(page_title.to_string());
         if let Some(date) = date {
-            metadata.insert("date".to_string(), HTMLContent::Plain(date.to_string()));
+            metadata
+                .custom
+                .insert("date".to_string(), HTMLContent::Plain(date.to_string()));
         }
 
         UnresolvedSection {
-            metadata: HTMLMetaData(metadata),
+            metadata,
             content: HTMLContent::Plain(content_html.to_string()),
         }
     }
@@ -570,10 +566,7 @@ mod tests {
             shallow("post", "Post", Some("2021-08-15"), "<p>post</p>"),
         );
         let mut collect = shallow("catalog", "Catalog", Some("2021-08-16"), "<p>catalog</p>");
-        collect.metadata.0.insert(
-            KEY_COLLECT.to_string(),
-            HTMLContent::Plain("true".to_string()),
-        );
+        collect.metadata.builtin.collect = true;
         shallows.insert(Slug::new("catalog"), collect);
 
         let state = compile_all_without_missing_index_warning(&shallows).unwrap();

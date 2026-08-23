@@ -11,10 +11,9 @@ use eyre::{eyre, WrapErr};
 use pulldown_cmark::Options;
 
 use crate::{
-    entry::{HTMLMetaData, KEY_EXT, KEY_SLUG},
+    entry::HTMLMetaData,
     environment,
     environment::input_path,
-    ordered_map::OrderedMap,
     process::{
         content::to_contents, embed_markdown::Embed, figure::Figure, filter_raw_html,
         footnote::Footnote, ignore_paragraph, metadata::Metadata, text_elaborator::TextElaborator,
@@ -126,12 +125,7 @@ pub(super) fn parse_markdown_sections_from_source(
 }
 
 pub(super) fn parse_markdown_source(source: &str, slug: Slug) -> eyre::Result<UnresolvedSection> {
-    let mut metadata: OrderedMap<String, HTMLContent> = OrderedMap::new();
-    metadata.insert(KEY_SLUG.to_string(), HTMLContent::Plain(slug.to_string()));
-    metadata.insert(
-        KEY_EXT.to_string(),
-        HTMLContent::Plain(environment::markdown_suffix()),
-    );
+    let mut metadata = HTMLMetaData::with_slug_ext(slug, environment::markdown_suffix());
 
     let events = pulldown_cmark::Parser::new_ext(source, OPTIONS);
     let events = filter_raw_html(events, environment::allow_unsafe_html());
@@ -164,7 +158,6 @@ pub(super) fn parse_markdown_source(source: &str, slug: Slug) -> eyre::Result<Un
         return Err(err).wrap_err("failed to parse metadata");
     }
 
-    let metadata = HTMLMetaData(metadata);
     Ok(UnresolvedSection { metadata, content })
 }
 

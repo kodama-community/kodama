@@ -10,8 +10,9 @@ use serde::Serialize;
 
 use crate::{
     compiler::{self, section::HTMLContent},
-    config, entry, environment,
-    ordered_map::OrderedMap,
+    config,
+    entry::HTMLMetaData,
+    environment,
     slug::Slug,
 };
 
@@ -84,9 +85,9 @@ fn section_snippets() -> eyre::Result<()> {
         .iter()
         .filter_map(|(slug, metadata)| {
             let slug_str = slug.as_str();
-            let title = metadata.get(entry::KEY_TITLE)?.remove_all_tags();
+            let title = metadata.title()?.remove_all_tags();
             let prefix = format!("{title} [{slug_str}]");
-            let ext = metadata.get(entry::KEY_EXT)?.as_str()?;
+            let ext = metadata.ext()?;
             let trees_dir = environment::trees_dir_without_root();
             let url = format!("/{}/{}.{}", trees_dir, slug_str, ext);
 
@@ -94,7 +95,7 @@ fn section_snippets() -> eyre::Result<()> {
             // supports link label names that contain spaces
             let body = [format!("[{title}]: {url}")];
             let description = metadata
-                .get(entry::KEY_TAXON)
+                .taxon()
                 .and_then(HTMLContent::as_str)
                 .unwrap_or("")
                 .to_string();
@@ -116,7 +117,7 @@ fn section_snippets() -> eyre::Result<()> {
     Ok(())
 }
 
-fn refresh_section_indexes() -> eyre::Result<HashMap<Slug, OrderedMap<String, HTMLContent>>> {
+fn refresh_section_indexes() -> eyre::Result<HashMap<Slug, HTMLMetaData>> {
     environment::ensure_cache_version()?;
     let trees_dir = environment::trees_dir();
     let workspace = compiler::all_trees_source(trees_dir.as_path())

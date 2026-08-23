@@ -8,7 +8,6 @@ use std::{collections::HashSet, ops::Not};
 use crate::{
     compiler::counter::Counter,
     config::build::FooterMode,
-    entry::{MetaData, KEY_INTERNAL_ANON_SUBTREE},
     environment,
     html_flake::{self, html_footer_section},
     slug::Slug,
@@ -79,8 +78,8 @@ impl Writer {
             .footer_sort_by()
             .unwrap_or_else(environment::footer_sort_by);
         let footer_html = Writer::footer(
-            section.metadata.footer_mode()?,
-            section.metadata.references_enabled()?,
+            section.metadata.footer_mode(),
+            section.metadata.references_enabled(),
             &footer_sort_by,
             state,
             &section.references,
@@ -120,7 +119,7 @@ impl Writer {
         };
 
         let href = environment::full_html_url(parent);
-        let title = section.metadata.title().map_or("", |s| s);
+        let title = section.metadata.title().map_or("", |s| s.as_str());
         let page_title = section.metadata.page_title().unwrap_or("");
         html_flake::html_header_nav(title, page_title, &href)
     }
@@ -227,9 +226,9 @@ impl Writer {
 
     fn catalog_item(section: &Section, taxon: &str, child_html: &str) -> eyre::Result<String> {
         let slug = section.slug()?;
-        let title = section.metadata.title().map_or("", |s| s);
+        let title = section.metadata.title().map_or("", |s| s.as_str());
         let page_title = section.metadata.page_title().unwrap_or("");
-        let use_hash_href = Writer::is_internal_anonymous_subtree(section)?;
+        let use_hash_href = Writer::is_internal_anonymous_subtree(section);
         Ok(html_flake::catalog_item(
             slug,
             title,
@@ -322,7 +321,7 @@ impl Writer {
                 true => counter.left_shift(),
                 false => counter.clone(),
             };
-            let is_collection = section.metadata.is_collect()?;
+            let is_collection = section.metadata.is_collect();
 
             for child in &section.children {
                 let (content_html, item_html) =
@@ -332,14 +331,14 @@ impl Writer {
             }
         };
 
-        if !toplevel && section.metadata.is_backlinks_transparent()? {
+        if !toplevel && section.metadata.is_backlinks_transparent() {
             let slug = section.slug()?;
             let footer_sort_by = section
                 .metadata
                 .footer_sort_by()
                 .unwrap_or_else(environment::footer_sort_by);
             let backlinks_html = Writer::footer(
-                section.metadata.footer_mode()?,
+                section.metadata.footer_mode(),
                 false,
                 &footer_sort_by,
                 state,
@@ -396,18 +395,19 @@ impl Writer {
         if section.option.numbering {
             counter.step_mut();
             let numbering = Some(counter.display());
-            let text = section.metadata.taxon().map_or("", |s| s);
+            let text = section.metadata.taxon().map_or("", |s| s.as_str());
             let taxon = Taxon::new(numbering, text.to_string());
             return taxon.display();
         }
-        section.metadata.taxon().map_or("", |s| s).to_string()
+        section
+            .metadata
+            .taxon()
+            .map_or("", |s| s.as_str())
+            .to_string()
     }
 
-    fn is_internal_anonymous_subtree(section: &Section) -> eyre::Result<bool> {
-        Ok(section
-            .metadata
-            .get_bool(KEY_INTERNAL_ANON_SUBTREE)?
-            .unwrap_or(false))
+    fn is_internal_anonymous_subtree(section: &Section) -> bool {
+        section.metadata.internal_anon_subtree()
     }
 }
 
@@ -420,11 +420,7 @@ mod tests {
             section::{EmbedContent, HTMLContent, LazyContent, SectionOption, UnresolvedSection},
             state::compile_all,
         },
-        entry::{
-            HTMLMetaData, KEY_EXT, KEY_INTERNAL_ANON_SUBTREE, KEY_PAGE_TITLE, KEY_REFERENCES,
-            KEY_SLUG, KEY_TITLE,
-        },
-        ordered_map::OrderedMap,
+        entry::HTMLMetaData,
     };
 
     use super::*;
@@ -449,26 +445,18 @@ mod tests {
         title: &str,
         content: HTMLContent,
     ) -> UnresolvedSection {
-        let mut metadata = OrderedMap::new();
-        metadata.insert(KEY_SLUG.to_string(), HTMLContent::Plain(slug.to_string()));
-        metadata.insert(KEY_EXT.to_string(), HTMLContent::Plain("md".to_string()));
-        metadata.insert(KEY_TITLE.to_string(), HTMLContent::Plain(title.to_string()));
-        metadata.insert(
-            KEY_PAGE_TITLE.to_string(),
-            HTMLContent::Plain(title.to_string()),
-        );
+        let mut metadata = HTMLMetaData::with_slug_ext(Slug::new(slug), "md");
+        metadata.title = Some(HTMLContent::Plain(title.to_string()));
+        metadata.builtin.page_title = Some(title.to_string());
 
-        UnresolvedSection {
-            metadata: HTMLMetaData(metadata),
-            content,
-        }
+        UnresolvedSection { metadata, content }
     }
 
     fn shallow_section_with_date(slug: &str, title: &str, date: &str) -> UnresolvedSection {
         let mut section = shallow_section(slug, title);
         section
             .metadata
-            .0
+            .custom
             .insert("date".to_string(), HTMLContent::Plain(date.to_string()));
         section
     }
@@ -488,21 +476,20 @@ mod tests {
     }
 
     #[test]
-    fn test_html_doc_returns_error_for_invalid_bool_metadata() {
+    fn test_compiled_metadata_inherits_builtin_defaults() {
         with_test_env(|| {
             let mut shallows = HashMap::new();
-            let mut section = shallow_section("a", "A");
-            section.metadata.0.insert(
-                KEY_REFERENCES.to_string(),
-                HTMLContent::Plain("maybe".to_string()),
-            );
-            shallows.insert(Slug::new("a"), section);
+            shallows.insert(Slug::new("a"), shallow_section("a", "A"));
 
             let state = compile_all(&shallows).unwrap();
             let section = state.compiled().get(&Slug::new("a")).unwrap();
-            let err = Writer::html_doc(section, &state).unwrap_err();
+            let metadata = &section.metadata;
 
-            assert!(err.to_string().contains("invalid bool metadata"));
+            assert!(metadata.references_enabled());
+            assert!(metadata.backlinks_enabled());
+            assert!(!metadata.is_collect());
+            assert!(!metadata.is_backlinks_transparent());
+            assert!(!metadata.internal_anon_subtree());
         });
     }
 
@@ -532,10 +519,7 @@ mod tests {
                     option: SectionOption::default(),
                 })]),
             );
-            anonymous.metadata.0.insert(
-                KEY_INTERNAL_ANON_SUBTREE.to_string(),
-                HTMLContent::Plain("true".to_string()),
-            );
+            anonymous.metadata.builtin.internal_anon_subtree = true;
             shallows.insert(Slug::new("anon"), anonymous);
             shallows.insert(Slug::new("leaf"), shallow_section("leaf", "Leaf"));
 

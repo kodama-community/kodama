@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, mem};
 
 use crate::{
-    entry::{EntryMetaData, HTMLMetaData, MetaData},
+    entry::{EntryMetaData, HTMLMetaData},
     slug::Slug,
 };
 

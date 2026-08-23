@@ -12,12 +12,8 @@ use super::section::{EmbedContent, LocalLink, SectionOption};
 use super::section::{HTMLContent, HTMLContentBuilder, LazyContent};
 use super::UnresolvedSection;
 use crate::{
-    entry::{
-        HTMLMetaData, KEY_EXT, KEY_INTERNAL_ANON_SUBTREE, KEY_SLUG, KEY_SOURCE_SLUG, KEY_TAXON,
-        KEY_TITLE,
-    },
+    entry::{is_plain_metadata, HTMLMetaData, KEY_SLUG, KEY_TAXON, KEY_TITLE},
     environment,
-    ordered_map::OrderedMap,
     process::metadata,
     slug::Slug,
     typst_cli,
@@ -37,7 +33,7 @@ fn parse_typst_html(
     html_str: &str,
     source_slug: Slug,
     current_slug: Slug,
-    metadata: &mut OrderedMap<String, HTMLContent>,
+    metadata: &mut HTMLMetaData,
     subtree_sections: &mut Vec<(Slug, UnresolvedSection)>,
     used_slugs: &mut HashSet<Slug>,
     anonymous_slugs: &mut AnonymousSlugState,
@@ -72,26 +68,39 @@ fn parse_typst_html(
         match span.kind {
             HTMLTagKind::Meta => {
                 let key = attr("key")?.as_ref();
-                let mut val = if let Some(value) = span.attrs.get("value") {
+                let val = if let Some(value) = span.attrs.get("value") {
                     HTMLContent::Plain(value.to_string())
                 } else {
                     parse_typst_html(
                         span.body,
                         source_slug,
                         current_slug,
-                        &mut OrderedMap::new(),
+                        &mut HTMLMetaData::default(),
                         subtree_sections,
                         used_slugs,
                         anonymous_slugs,
                         false,
                     )?
                 };
-                if key == "taxon" {
-                    if let HTMLContent::Plain(v) = val {
-                        val = HTMLContent::Plain(metadata::display_taxon(&v));
-                    }
+                if key == KEY_TAXON {
+                    metadata.taxon = Some(match val {
+                        HTMLContent::Plain(v) => HTMLContent::Plain(metadata::display_taxon(&v)),
+                        other => other,
+                    });
+                } else if is_plain_metadata(key) {
+                    let plain = val.as_str().ok_or_else(|| {
+                        eyre!(
+                            "metadata field `{}` in `{}` is expected to be plain text",
+                            key,
+                            current_slug
+                        )
+                    })?;
+                    metadata.builtin.assign(key, plain, current_slug)?;
+                } else if key == KEY_TITLE {
+                    metadata.title = Some(val);
+                } else {
+                    metadata.custom.insert(key.to_string(), val);
                 }
-                metadata.insert(key.to_string(), val);
             }
             HTMLTagKind::Embed => {
                 let def = SectionOption::default();
@@ -168,24 +177,11 @@ fn parse_typst_html(
                     option,
                 }));
 
-                let mut subtree_metadata = OrderedMap::new();
-                subtree_metadata.insert(
-                    KEY_SLUG.to_string(),
-                    HTMLContent::Plain(subtree_slug.to_string()),
-                );
-                subtree_metadata.insert(
-                    KEY_EXT.to_string(),
-                    HTMLContent::Plain(environment::typst_suffix()),
-                );
-                subtree_metadata.insert(
-                    KEY_SOURCE_SLUG.to_string(),
-                    HTMLContent::Plain(source_slug.to_string()),
-                );
+                let mut subtree_metadata =
+                    HTMLMetaData::with_slug_ext(subtree_slug, environment::typst_suffix());
+                subtree_metadata.builtin.source_slug = Some(source_slug.to_string());
                 if anonymous {
-                    subtree_metadata.insert(
-                        KEY_INTERNAL_ANON_SUBTREE.to_string(),
-                        HTMLContent::Plain("true".to_string()),
-                    );
+                    subtree_metadata.builtin.internal_anon_subtree = true;
                 }
                 let nested_current_slug = if anonymous {
                     current_slug
@@ -213,7 +209,7 @@ fn parse_typst_html(
                 subtree_sections.push((
                     subtree_slug,
                     UnresolvedSection {
-                        metadata: HTMLMetaData(subtree_metadata),
+                        metadata: subtree_metadata,
                         content: subtree_content,
                     },
                 ));
@@ -226,22 +222,15 @@ fn parse_typst_html(
     Ok(builder.build())
 }
 
-fn apply_subtree_defaults(
-    metadata: &mut OrderedMap<String, HTMLContent>,
-    title: Option<&str>,
-    taxon: Option<&str>,
-) {
-    if !metadata.contains_key(KEY_TITLE) {
+fn apply_subtree_defaults(metadata: &mut HTMLMetaData, title: Option<&str>, taxon: Option<&str>) {
+    if metadata.title.is_none() {
         if let Some(title) = title {
-            metadata.insert(KEY_TITLE.to_string(), HTMLContent::Plain(title.to_string()));
+            metadata.title = Some(HTMLContent::Plain(title.to_string()));
         }
     }
-    if !metadata.contains_key(KEY_TAXON) {
+    if metadata.taxon.is_none() {
         if let Some(taxon) = taxon {
-            metadata.insert(
-                KEY_TAXON.to_string(),
-                HTMLContent::Plain(metadata::display_taxon(taxon)),
-            );
+            metadata.taxon = Some(HTMLContent::Plain(metadata::display_taxon(taxon)));
         }
     }
 }
@@ -250,19 +239,8 @@ fn parse_typst_sections_from_html(
     source_slug: Slug,
     html_str: &str,
 ) -> eyre::Result<Vec<(Slug, UnresolvedSection)>> {
-    let mut metadata: OrderedMap<String, HTMLContent> = OrderedMap::new();
-    metadata.insert(
-        KEY_SLUG.to_string(),
-        HTMLContent::Plain(source_slug.to_string()),
-    );
-    metadata.insert(
-        KEY_EXT.to_string(),
-        HTMLContent::Plain(environment::typst_suffix()),
-    );
-    metadata.insert(
-        KEY_SOURCE_SLUG.to_string(),
-        HTMLContent::Plain(source_slug.to_string()),
-    );
+    let mut metadata = HTMLMetaData::with_slug_ext(source_slug, environment::typst_suffix());
+    metadata.builtin.source_slug = Some(source_slug.to_string());
 
     let mut used_slugs = HashSet::from([source_slug]);
     let mut anonymous_slugs = AnonymousSlugState::default();
@@ -278,13 +256,7 @@ fn parse_typst_sections_from_html(
         true,
     )?;
 
-    let mut sections = vec![(
-        source_slug,
-        UnresolvedSection {
-            metadata: HTMLMetaData(metadata),
-            content,
-        },
-    )];
+    let mut sections = vec![(source_slug, UnresolvedSection { metadata, content })];
     sections.extend(subtree_sections);
     ensure_unique_section_slugs(&sections, source_slug, "typst subtree")?;
     Ok(sections)
@@ -311,7 +283,7 @@ mod tests {
             anonymous_slug::{anonymous_slug_for, ANON_SUBTREE_ORDINAL_INITIAL},
             section::LazyContent,
         },
-        entry::{MetaData, KEY_INTERNAL_ANON_SUBTREE},
+        slug::Slug,
     };
 
     fn find_section(sections: &[(Slug, UnresolvedSection)], slug: Slug) -> &UnresolvedSection {
@@ -352,7 +324,7 @@ mod tests {
             Some("Child")
         );
         assert_eq!(child.metadata.ext(), Some("typst"));
-        assert_eq!(child.metadata.get_str(KEY_SOURCE_SLUG), Some("book/index"));
+        assert_eq!(child.metadata.source_slug(), Some("book/index"));
     }
 
     #[test]
@@ -412,10 +384,7 @@ mod tests {
         assert_eq!(embed.title.as_deref(), Some("Anonymous"));
 
         let anonymous = find_section(&sections, anonymous_slug);
-        assert_eq!(
-            anonymous.metadata.get_str(KEY_INTERNAL_ANON_SUBTREE),
-            Some("true")
-        );
+        assert!(anonymous.metadata.internal_anon_subtree());
     }
 
     #[test]
@@ -433,13 +402,7 @@ mod tests {
 
         let anonymous = sections
             .iter()
-            .find_map(|(_, section)| {
-                section
-                    .metadata
-                    .get_str(KEY_INTERNAL_ANON_SUBTREE)
-                    .is_some_and(|value| value == "true")
-                    .then_some(section)
-            })
+            .find_map(|(_, section)| section.metadata.internal_anon_subtree().then_some(section))
             .expect("expected anonymous wrapper section");
         let HTMLContent::Lazy(contents) = &anonymous.content else {
             panic!("expected lazy anonymous content");

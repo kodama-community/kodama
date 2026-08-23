@@ -82,23 +82,14 @@ mod tests {
         compiler::section::{
             EmbedContent, HTMLContent, LazyContent, LocalLink, SectionOption, UnresolvedSection,
         },
-        entry::{HTMLMetaData, KEY_ASREF, KEY_EXT, KEY_PAGE_TITLE, KEY_SLUG, KEY_TITLE},
-        ordered_map::OrderedMap,
+        entry::HTMLMetaData,
     };
 
     fn shallow(slug: &str, content: HTMLContent) -> UnresolvedSection {
-        let mut metadata = OrderedMap::new();
-        metadata.insert(KEY_SLUG.to_string(), HTMLContent::Plain(slug.to_string()));
-        metadata.insert(KEY_EXT.to_string(), HTMLContent::Plain("md".to_string()));
-        metadata.insert(KEY_TITLE.to_string(), HTMLContent::Plain(slug.to_string()));
-        metadata.insert(
-            KEY_PAGE_TITLE.to_string(),
-            HTMLContent::Plain(slug.to_string()),
-        );
-        UnresolvedSection {
-            metadata: HTMLMetaData(metadata),
-            content,
-        }
+        let mut metadata = HTMLMetaData::with_slug_ext(Slug::new(slug), "md");
+        metadata.title = Some(HTMLContent::Plain(slug.to_string()));
+        metadata.builtin.page_title = Some(slug.to_string());
+        UnresolvedSection { metadata, content }
     }
 
     #[test]
@@ -133,10 +124,7 @@ mod tests {
         );
 
         let mut ref_section = shallow("ref", HTMLContent::Plain("<p>ref</p>".to_string()));
-        ref_section.metadata.0.insert(
-            KEY_ASREF.to_string(),
-            HTMLContent::Plain("true".to_string()),
-        );
+        ref_section.metadata.builtin.asref = Some(true);
         shallows.insert(Slug::new("ref"), ref_section);
         shallows.insert(
             Slug::new("child"),

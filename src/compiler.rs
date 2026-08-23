@@ -36,9 +36,8 @@ use typst::parse_typst_sections;
 use writer::Writer;
 
 use crate::{
-    entry::{MetaData, KEY_INTERNAL_ANON_SUBTREE},
+    entry::HTMLMetaData,
     environment::{self, SourceMeta},
-    ordered_map::OrderedMap,
     slug::{SectionKind, Slug},
 };
 
@@ -109,7 +108,7 @@ pub fn compile(
 pub fn refresh_indexes(
     workspace: &Workspace,
     dirty_paths: Option<&DirtySet>,
-) -> eyre::Result<HashMap<Slug, OrderedMap<String, HTMLContent>>> {
+) -> eyre::Result<HashMap<Slug, HTMLMetaData>> {
     let shallows = collect_shallows(workspace, dirty_paths)?;
     Ok(indexes_from_shallows(&shallows))
 }
@@ -197,21 +196,16 @@ pub(super) fn compile_from_shallows(
     Ok(())
 }
 
-fn indexes_from_shallows(
-    shallows: &UnresolvedSections,
-) -> HashMap<Slug, OrderedMap<String, HTMLContent>> {
+fn indexes_from_shallows(shallows: &UnresolvedSections) -> HashMap<Slug, HTMLMetaData> {
     shallows
         .iter()
         .filter(|(_, section)| !is_internal_anonymous_subtree(section))
-        .map(|(slug, section)| (*slug, section.metadata.0.clone()))
+        .map(|(slug, section)| (*slug, section.metadata.clone()))
         .collect()
 }
 
 fn is_internal_anonymous_subtree(section: &UnresolvedSection) -> bool {
-    section
-        .metadata
-        .get_str(KEY_INTERNAL_ANON_SUBTREE)
-        .is_some_and(|value| value == "true")
+    section.metadata.internal_anon_subtree()
 }
 
 pub(super) fn collect_shallows(
@@ -314,34 +308,22 @@ pub(super) fn write_entry_cache(
     Ok(())
 }
 
-fn read_entry_cache(
-    entry_path: &Utf8Path,
-    source_slug: Slug,
-) -> eyre::Result<(Option<SourceMeta>, ParsedSections)> {
+fn read_entry_cache(entry_path: &Utf8Path) -> eyre::Result<(Option<SourceMeta>, ParsedSections)> {
     let entry_file = BufReader::new(
         File::open(entry_path)
             .wrap_err_with(|| eyre!("failed to open entry file at `{}`", entry_path))?,
     );
 
-    if let Ok(cached) = serde_json::from_reader::<_, CachedSourceEntry>(entry_file) {
-        return Ok((
-            cached.source_meta,
-            cached
-                .sections
-                .into_iter()
-                .map(|cached| (cached.slug, cached.section))
-                .collect(),
-        ));
-    }
-
-    // Backward compatibility: older versions cached a single section value.
-    let entry_file = BufReader::new(
-        File::open(entry_path)
-            .wrap_err_with(|| eyre!("failed to reopen entry file at `{}`", entry_path))?,
-    );
-    let section: UnresolvedSection = serde_json::from_reader(entry_file)
+    let cached = serde_json::from_reader::<_, CachedSourceEntry>(entry_file)
         .wrap_err_with(|| eyre!("failed to deserialize entry file at `{}`", entry_path))?;
-    Ok((None, vec![(source_slug, section)]))
+    Ok((
+        cached.source_meta,
+        cached
+            .sections
+            .into_iter()
+            .map(|cached| (cached.slug, cached.section))
+            .collect(),
+    ))
 }
 
 fn load_shallow_sections(
@@ -360,8 +342,7 @@ fn load_shallow_sections(
     if !must_reparse && source_meta.is_some() {
         // Trust the cached entry when the source's (mtime, size) is unchanged.
         // An unstat'able source is never trusted.
-        if let Ok((cached_meta, mut sections)) = read_entry_cache(entry_path.as_path(), source_slug)
-        {
+        if let Ok((cached_meta, mut sections)) = read_entry_cache(entry_path.as_path()) {
             if cached_meta == source_meta {
                 for (_, section) in &mut sections {
                     section.metadata.compute_textual_attrs();
