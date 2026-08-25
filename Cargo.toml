@@ -8,7 +8,7 @@ clap = { version = "4.6.6", default-features = false, features = ["std", "derive
 eyre = { version = "0.6.14", default-features = false, features = ["auto-install", "track-caller"] }
 fastrand = { version = "2.5.0", default-features = false, features = ["std"] }
 htmlize = { version = "1.1.0", features = ["unescape"]}
-internment = { version = "0.8.6", default-features = false, features = ["intern", "serde"] }
+internment = { version = "0.8.2", default-features = false, features = ["intern", "serde"] }
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
 pulldown-cmark-escape = "0.11.0"
 regex-lite = { version = "0.1.9", default-features = false, features = ["std", "string"] }
@@ -16,7 +16,7 @@ serde = { version = "1.0.229", default-features = false, features = ["std", "der
 serde_json = { version = "1.0.151", default-features = false, features = ["std"] }
 walkdir = "2.5.0"
 notify = { version = "8.2.0", default-features = false, features = ["macos_fsevent"] }
-toml = { version = "0.9.12", default-features = false, features = ["display", "parse", "serde", "std"] }
+toml = { version = "1.1.4", default-features = false, features = ["display", "parse", "serde", "std"] }
 url = { version = "2.5.8", default-features = false, features = ["std"] }
 camino = { version = "1.2.5", default-features = false }
 color-print = "0.3.7"
