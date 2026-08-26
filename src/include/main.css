@@ -706,16 +706,31 @@ figure:has(.typst-frame) {
   overflow-y: hidden;
 }
 
+.typst-block svg {
+  margin-inline: auto;
+}
+
 figure.typst-block>img {
   max-width: none;
 }
 
-.typst-text use[fill="#000000"],
-.typst-group use[fill="#000000"],
-path.typst-shape[fill="#000000"] {
+.typst-inline [fill="#000000"],
+.typst-block [fill="#000000"],
+.inline-typst [fill="#000000"] {
   fill: var(--text-color);
 }
 
-path.typst-shape[stroke="#000000"] {
+.typst-inline [stroke="#000000"],
+.typst-block [stroke="#000000"],
+.inline-typst [stroke="#000000"] {
   stroke: var(--text-color);
 }
+
+.auto-frame [fill="#000000"] {
+  fill: var(--text-color);
+}
+
+.auto-frame [stroke="#000000"] {
+  stroke: var(--text-color);
+}
+
