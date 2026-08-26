@@ -18,7 +18,8 @@ use crate::{
 use super::{
     callback::{Callback, CallbackValue},
     section::{
-        HTMLContent, LazyContent, Section, SectionContent, SectionContents, UnresolvedSection,
+        HTMLContent, LazyContent, Section, SectionContent, SectionContents, TypstFigure,
+        TypstFigureKind, UnresolvedSection,
     },
     taxon::Taxon,
 };
@@ -209,6 +210,10 @@ impl CompileState {
                             );
                             children.push(SectionContent::Plain(html));
                         }
+                        LazyContent::TypstFigure(figure) => {
+                            let html = typst_figure_html(figure);
+                            children.push(SectionContent::Plain(html));
+                        }
                     }
                 }
 
@@ -357,6 +362,26 @@ impl CompileState {
 /// tree. Otherwise it's attached to the directory containing the current file.
 fn subsection_slug(current_slug: Slug, url: &str) -> Slug {
     slug::to_slug(path_utils::relative_to_current(current_slug.as_str(), url))
+}
+
+/// Render a markdown-embedded Typst figure into its final HTML, applying the
+/// `base_url` prefix to the SVG path at compile time so that cached content
+/// never pins an environment-specific URL.
+fn typst_figure_html(figure: &TypstFigure) -> String {
+    let image_src = environment::full_url(&figure.svg_url);
+    match figure.kind {
+        TypstFigureKind::Span => {
+            crate::html_flake::html_typst_figure(&image_src, false, figure.caption.clone())
+        }
+        TypstFigureKind::Block => {
+            crate::html_flake::html_typst_figure(&image_src, true, figure.caption.clone())
+        }
+        TypstFigureKind::Code => crate::html_flake::html_figure_code(
+            &image_src,
+            figure.caption.clone(),
+            figure.code.clone(),
+        ),
+    }
 }
 
 fn get_metadata(shallows: &UnresolvedSections, slug: Slug) -> Option<&HTMLMetaData> {
@@ -622,5 +647,108 @@ mod tests {
             .expect("child callback");
         assert_eq!(child_callback.parent, Slug::new("index"));
         assert!(!state.callback().0.contains_key(&Slug::new("anon")));
+    }
+
+    #[test]
+    fn test_typst_figure_resolves_base_url_at_compile_time() {
+        let root = crate::test_io::case_dir("state-typst-figure-base-url");
+        std::fs::create_dir_all(root.as_std_path()).unwrap();
+        let mut config = crate::config::Config::default();
+        config.kodama.base_url = "https://example.com/".to_string();
+
+        crate::environment::with_test_environment_config(
+            root.clone(),
+            crate::environment::BuildMode::Publish,
+            config,
+            || {
+                let section = crate::compiler::parser::parse_markdown_source(
+                    "[](/guide/fig.typ#:block)",
+                    Slug::new("guide/index"),
+                )
+                .unwrap();
+                let mut shallows = HashMap::new();
+                shallows.insert(Slug::new("guide/index"), section);
+
+                let state = compile_all_without_missing_index_warning(&shallows).unwrap();
+                let compiled = state
+                    .compiled()
+                    .get(&Slug::new("guide/index"))
+                    .expect("compiled section");
+                let html: String = compiled
+                    .children
+                    .iter()
+                    .map(|content| match content {
+                        SectionContent::Plain(s) => s.clone(),
+                        SectionContent::Embed(_) => String::new(),
+                    })
+                    .collect();
+
+                assert!(
+                    html.contains(r#"<img src="https://example.com/guide/fig.svg" class="color-invert"/>"#),
+                    "typst figure img src should carry the full base_url at compile time, got: {html}"
+                );
+            },
+        );
+
+        let _ = std::fs::remove_dir_all(root.as_std_path());
+    }
+
+    #[test]
+    fn test_typst_code_figure_resolves_base_url_at_compile_time() {
+        let root = crate::test_io::case_dir("state-typst-code-figure-base-url");
+        std::fs::create_dir_all(root.as_std_path()).unwrap();
+        let mut config = crate::config::Config::default();
+        config.kodama.base_url = "https://example.com/".to_string();
+
+        crate::environment::with_test_environment_config(
+            root.clone(),
+            crate::environment::BuildMode::Publish,
+            config,
+            || {
+                let shallows = {
+                    let mut shallows = HashMap::new();
+                    shallows.insert(
+                        Slug::new("guide/index"),
+                        shallow_with_content(
+                            "guide/index",
+                            HTMLContent::Lazy(vec![LazyContent::TypstFigure(TypstFigure {
+                                svg_url: "guide/fig.svg".to_string(),
+                                caption: "diagram".to_string(),
+                                kind: TypstFigureKind::Code,
+                                code: "let x = 1".to_string(),
+                            })]),
+                        ),
+                    );
+                    shallows
+                };
+
+                let state = compile_all_without_missing_index_warning(&shallows).unwrap();
+                let compiled = state
+                    .compiled()
+                    .get(&Slug::new("guide/index"))
+                    .expect("compiled section");
+                let html: String = compiled
+                    .children
+                    .iter()
+                    .map(|content| match content {
+                        SectionContent::Plain(s) => s.clone(),
+                        SectionContent::Embed(_) => String::new(),
+                    })
+                    .collect();
+
+                assert!(
+                    html.contains(
+                        r#"<img src="https://example.com/guide/fig.svg" class="color-invert"/>"#
+                    ),
+                    "code figure img src should carry the full base_url, got: {html}"
+                );
+                assert!(
+                    html.contains("<pre>let x = 1</pre>"),
+                    "code figure should embed the typst source, got: {html}"
+                );
+            },
+        );
+
+        let _ = std::fs::remove_dir_all(root.as_std_path());
     }
 }

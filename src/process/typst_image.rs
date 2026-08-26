@@ -8,9 +8,11 @@ use camino::Utf8PathBuf;
 use pulldown_cmark::{Event, Tag, TagEnd};
 
 use crate::{
-    compiler::inline_typst::{self, INLINE_PLACEHOLDER},
+    compiler::{
+        inline_typst::{self, INLINE_PLACEHOLDER},
+        section::{TypstFigure, TypstFigureKind},
+    },
     environment::{self, output_path},
-    html_flake::{html_figure_code, html_typst_figure},
     recorder::State,
     slug::Slug,
     typst_cli::{self, write_to_inline_html},
@@ -167,8 +169,12 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
                         let svg_url = typst_url.with_extension("svg");
                         self.exit();
 
-                        let html =
-                            html_typst_figure(&environment::full_url(&svg_url), false, caption);
+                        let html = encode_typst_figure(&TypstFigure {
+                            svg_url: svg_url.to_string(),
+                            caption,
+                            kind: TypstFigureKind::Span,
+                            code: String::new(),
+                        });
                         return Some(Event::Html(html.into()));
                     }
                     State::ImageBlock => {
@@ -178,8 +184,12 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
                         let svg_url = typst_url.with_extension("svg");
                         self.exit();
 
-                        let html =
-                            html_typst_figure(&environment::full_url(&svg_url), true, caption);
+                        let html = encode_typst_figure(&TypstFigure {
+                            svg_url: svg_url.to_string(),
+                            caption,
+                            kind: TypstFigureKind::Block,
+                            code: String::new(),
+                        });
                         return Some(Event::Html(html.into()));
                     }
                     State::ImageCode => {
@@ -202,8 +212,12 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
                                 String::new()
                             });
 
-                        let html =
-                            html_figure_code(&environment::full_url(&svg_url), caption, code);
+                        let html = encode_typst_figure(&TypstFigure {
+                            svg_url: svg_url.to_string(),
+                            caption,
+                            kind: TypstFigureKind::Code,
+                            code,
+                        });
                         return Some(Event::Html(html.into()));
                     }
                     State::Shared => {
@@ -266,6 +280,28 @@ fn smart_punctuation_reverse(s: &str) -> String {
         .replace("—", "---")
 }
 
+/// Marker framing a serialized [`TypstFigure`] inside an `Event::Html` event.
+///
+/// The figure is kept as structured data (instead of baked HTML) so the cached
+/// content stays independent of the build environment: the `base_url` prefix is
+/// applied later when the section is compiled into a page. NUL bytes are used
+/// as delimiters (mirroring `INLINE_PLACEHOLDER`) so the marker cannot collide
+/// with ordinary raw HTML.
+const TYPST_FIGURE_PREFIX: &str = "\u{0}KTF";
+const TYPST_FIGURE_SUFFIX: &str = "\u{0}";
+
+pub(crate) fn encode_typst_figure(figure: &TypstFigure) -> String {
+    let json = serde_json::to_string(figure).unwrap_or_default();
+    format!("{TYPST_FIGURE_PREFIX}{json}{TYPST_FIGURE_SUFFIX}")
+}
+
+pub(crate) fn decode_typst_figure(html: &str) -> Option<TypstFigure> {
+    let json = html
+        .strip_prefix(TYPST_FIGURE_PREFIX)?
+        .strip_suffix(TYPST_FIGURE_SUFFIX)?;
+    serde_json::from_str(json).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,5 +326,25 @@ mod tests {
         crate::environment::mock_environment().unwrap();
         let path = typst_path(Slug::new("a/b/index"), "./x/../y.typ");
         assert_eq!(path, Utf8PathBuf::from("a/b/y.typ"));
+    }
+
+    #[test]
+    fn test_encode_decode_typst_figure_roundtrip() {
+        let figure = TypstFigure {
+            svg_url: "guide/fig.svg".to_string(),
+            caption: "a <caption>".to_string(),
+            kind: TypstFigureKind::Code,
+            code: "let x = 1".to_string(),
+        };
+        let encoded = encode_typst_figure(&figure);
+        assert!(encoded.starts_with(TYPST_FIGURE_PREFIX));
+        assert_eq!(decode_typst_figure(&encoded), Some(figure));
+    }
+
+    #[test]
+    fn test_decode_typst_figure_rejects_plain_html() {
+        assert_eq!(decode_typst_figure("<img src=\"x.png\" />"), None);
+        assert_eq!(decode_typst_figure("plain text"), None);
+        assert_eq!(decode_typst_figure(""), None);
     }
 }

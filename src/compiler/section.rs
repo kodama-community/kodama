@@ -97,6 +97,30 @@ pub struct LocalLink {
     pub text: Option<String>,
 }
 
+/// How a markdown-embedded Typst figure should be rendered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TypstFigureKind {
+    /// Inline `<span>` figure.
+    Span,
+    /// Block `<figure>` figure.
+    Block,
+    /// Block `<details>` figure with the Typst source code.
+    Code,
+}
+
+/// A Typst figure embedded from Markdown. The SVG path is kept relative to the
+/// output root so the content stays independent of the build environment; the
+/// `base_url` prefix is applied when the section is compiled into a page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TypstFigure {
+    /// Relative path of the compiled SVG, e.g. `guide/fig.svg`.
+    pub svg_url: String,
+    pub caption: String,
+    pub kind: TypstFigureKind,
+    /// Typst source code shown for [`TypstFigureKind::Code`]; empty otherwise.
+    pub code: String,
+}
+
 /// Plain HTMLs & lazy embedding HTMLs, This means that
 /// the embedded structure within are not expanded.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,6 +128,7 @@ pub enum LazyContent {
     Plain(String),
     Embed(EmbedContent),
     Local(LocalLink),
+    TypstFigure(TypstFigure),
 }
 
 pub type LazyContents = Vec<LazyContent>;
@@ -148,6 +173,7 @@ impl HTMLContent {
                             .as_ref()
                             .map(|s| strip_tags(s))
                             .unwrap_or_default(),
+                        LazyContent::TypstFigure(figure) => strip_tags(&figure.caption),
                     };
                     str.push_str(&s);
                 }

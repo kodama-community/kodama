@@ -184,7 +184,11 @@ where
                 }
                 Html(html) | InlineHtml(html) => {
                     self.ensure_paragraph_started();
-                    self.write(&html);
+                    if let Some(figure) = crate::process::typst_image::decode_typst_figure(&html) {
+                        self.contents.push(LazyContent::TypstFigure(figure));
+                    } else {
+                        self.write(&html);
+                    }
                 }
                 SoftBreak => {
                     if !self.paragraph_started {

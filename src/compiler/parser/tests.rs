@@ -3,7 +3,10 @@
 // Authors: Kokic (@kokic)
 
 use super::*;
-use crate::slug::Slug;
+use crate::{
+    compiler::section::{LazyContent, TypstFigure, TypstFigureKind},
+    slug::Slug,
+};
 
 #[test]
 pub fn test_table_td() {
@@ -103,6 +106,43 @@ allow-unsafe-html = true
             assert_eq!(
                 content.as_str().unwrap(),
                 r#"safe <span class="x">ok</span>"#
+            );
+        },
+    );
+
+    let _ = fs::remove_dir_all(root.as_std_path());
+}
+
+#[test]
+pub fn test_typst_figure_content_is_base_url_independent() {
+    use std::fs;
+
+    let root = crate::test_io::case_dir("parser-typst-figure-base-url");
+    fs::create_dir_all(root.as_std_path()).unwrap();
+    let mut config = crate::config::Config::default();
+    config.kodama.base_url = "https://example.com/".to_string();
+
+    crate::environment::with_test_environment_config(
+        root.clone(),
+        crate::environment::BuildMode::Publish,
+        config,
+        || {
+            let section =
+                parse_markdown_source("[](/guide/fig.typ#:block)", Slug::new("guide/index"))
+                    .unwrap();
+            let HTMLContent::Lazy(contents) = section.content else {
+                panic!("expected lazy content, got {:?}", section.content);
+            };
+            assert!(
+                contents.iter().any(|content| matches!(
+                    content,
+                    LazyContent::TypstFigure(TypstFigure {
+                        svg_url,
+                        kind: TypstFigureKind::Block,
+                        ..
+                    }) if svg_url == "guide/fig.svg"
+                )),
+                "typst figure should keep a relative `svg_url` in parsed content, got {contents:?}"
             );
         },
     );

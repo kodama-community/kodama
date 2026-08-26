@@ -8,7 +8,9 @@ use std::{
 };
 
 use crate::{
-    compiler::section::{EmbedContent, HTMLContent, LazyContent, LocalLink, UnresolvedSection},
+    compiler::section::{
+        EmbedContent, HTMLContent, LazyContent, LocalLink, TypstFigure, UnresolvedSection,
+    },
     html_flake::html_inline_typst_span,
     slug::Slug,
     typst_cli,
@@ -168,6 +170,9 @@ fn resolve_inline_typst_content(content: &mut HTMLContent, results: &[String]) {
                         if let Some(text) = text {
                             resolve_inline_placeholder(text, results);
                         }
+                    }
+                    LazyContent::TypstFigure(TypstFigure { caption, .. }) => {
+                        resolve_inline_placeholder(caption, results);
                     }
                 }
             }
