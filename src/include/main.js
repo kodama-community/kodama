@@ -216,18 +216,36 @@ const applyFilters = (rgb, [inv, sep, sat, hue, bri, con]) => {
   return color;
 };
 
+// Probe colors used to keep the filter from collapsing distinct colors into gray.
+// The base loss only constrains the target color, so solutions with `saturate` near 0
+// (which map every color to its luminance gray) are equally optimal. Penalizing low
+// saturation of these probes steers the solver toward invertible, color-preserving filters.
+const PROBE_COLORS = [
+  [9, 103, 118], // #096776
+  [164, 85, 9],  // #a45509
+  [200, 30, 30],
+  [30, 180, 60],
+  [30, 60, 200],
+];
+const PROBE_MIN_SATURATION = 40;
+const PROBE_SATURATION_WEIGHT = 0.5;
+
 const lossFn = (targetRgb, filters) => {
   const resultRgb = applyFilters([0, 0, 0], filters);
   const targetHsl = rgbToHsl(...targetRgb);
   const resultHsl = rgbToHsl(...resultRgb);
-  return (
+  let loss =
     Math.abs(resultRgb[0] - targetRgb[0]) +
     Math.abs(resultRgb[1] - targetRgb[1]) +
     Math.abs(resultRgb[2] - targetRgb[2]) +
     Math.abs(resultHsl.h - targetHsl.h) +
     Math.abs(resultHsl.s - targetHsl.s) +
-    Math.abs(resultHsl.l - targetHsl.l)
-  );
+    Math.abs(resultHsl.l - targetHsl.l);
+  for (const probe of PROBE_COLORS) {
+    const probeHsl = rgbToHsl(...applyFilters(probe, filters));
+    loss += PROBE_SATURATION_WEIGHT * Math.max(0, PROBE_MIN_SATURATION - probeHsl.s);
+  }
+  return loss;
 };
 
 const fix = (value, idx) => {
@@ -332,7 +350,7 @@ const toRGBArray = (cssColor) => {
 const DYNAMIC_STYLE_ELEMENT_ID = 'dynamic-color-invert-style';
 
 function memorizedSolvedFilter(color) {
-  const colorKey = `solved-${color}`;
+  const colorKey = `solved-${color}-v2`;
   const storedFilterOption = localStorage.getItem(colorKey);
   if (storedFilterOption) {
     return storedFilterOption;
