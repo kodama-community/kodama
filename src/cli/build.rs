@@ -100,6 +100,8 @@ pub fn build_with_dirty(
     _ = VERBOSE_SKIP.set(options.verbose_skip);
     _ = NO_CACHE.set(options.no_cache);
 
+    crate::cli::upgrade_hint::check_upgrade_hints();
+
     export_static_files().wrap_err("failed to export static files")?;
 
     let root = environment::root_dir();
@@ -129,6 +131,8 @@ pub fn serve_rewrite_from_memory(config: &str, options: BuildOptions) -> eyre::R
     _ = VERBOSE.set(options.verbose);
     _ = VERBOSE_SKIP.set(options.verbose_skip);
     _ = NO_CACHE.set(options.no_cache);
+
+    crate::cli::upgrade_hint::check_upgrade_hints();
 
     export_static_files().wrap_err("failed to export static files")?;
 

@@ -80,6 +80,8 @@ To sync only the Typst library:
 kodama upgrade typst-lib
 ```
 
+`build` and `serve` never modify these files automatically. If the config file or `trees/_lib/kodama.typ` differs from the bundled version, they print a `[upgrade]` hint pointing to the commands above; the hint is suppressed until the file changes again.
+
 ## Editor Integration
 
 Generate VS Code snippets:

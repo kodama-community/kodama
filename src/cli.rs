@@ -10,3 +10,4 @@ pub mod output;
 pub mod serve;
 pub mod snip;
 pub mod upgrade;
+pub mod upgrade_hint;

@@ -154,7 +154,7 @@ fn upgrade_config_file(
     })
 }
 
-fn upgrade_content(source: &str) -> eyre::Result<(String, config::Config)> {
+pub(crate) fn upgrade_content(source: &str) -> eyre::Result<(String, config::Config)> {
     let config = config::parse_config(source)?;
     let mut upgraded =
         toml::to_string(&config).wrap_err("failed to serialize upgraded configuration")?;
