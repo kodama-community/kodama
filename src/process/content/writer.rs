@@ -10,6 +10,7 @@ use pulldown_cmark::{
 use pulldown_cmark_escape::{escape_href, escape_html, escape_html_body_text};
 
 use crate::compiler::section::{LazyContent, LazyContents};
+use crate::process::inline_content::{write_leaf, Escape};
 use crate::process::url::{is_allowed_scheme, is_unsafe_scheme, scheme_name};
 
 use super::EventExtended;
@@ -586,25 +587,6 @@ where
                     nest -= 1;
                 }
                 Html(_) => {}
-                InlineHtml(text) | Code(text) | Text(text) => {
-                    // Don't use escape_html_body_text here.
-                    // The output of this function is used in the `alt` attribute.
-                    escape_html(self.writer(), &text).unwrap();
-                    self.end_newline = text.ends_with('\n');
-                }
-                InlineMath(text) => {
-                    self.write("$");
-                    escape_html(self.writer(), &text).unwrap();
-                    self.write("$");
-                }
-                DisplayMath(text) => {
-                    self.write("$$");
-                    escape_html(self.writer(), &text).unwrap();
-                    self.write("$$");
-                }
-                SoftBreak | HardBreak | Rule => {
-                    self.write(" ");
-                }
                 FootnoteReference(name) => {
                     let len = self.numbers.len() + 1;
                     let number = *self.numbers.entry(name).or_insert(len);
@@ -612,6 +594,10 @@ where
                 }
                 TaskListMarker(true) => self.write("[x]"),
                 TaskListMarker(false) => self.write("[ ]"),
+                _ => {
+                    write_leaf(self.writer(), event, Escape::Attribute, false);
+                    self.end_newline = false;
+                }
             }
         }
     }

@@ -4,6 +4,7 @@
 
 use super::{
     content::EventExtended,
+    inline_content::{is_formatting_end, is_formatting_start, warn_unexpected},
     path_resolution::{relocate_trees_path_with_trees_root, resolve_section_url},
     processor::url_action,
     url::{is_allowed_scheme, is_unsafe_scheme, scheme_name},
@@ -47,6 +48,7 @@ pub struct Embed<'e, E> {
     state: State,
     url: Option<String>,
     content: Vec<Event<'e>>,
+    nest: usize,
 }
 
 impl<'e, E> Embed<'e, E> {
@@ -73,6 +75,7 @@ impl<'e, E> Embed<'e, E> {
             state: State::None,
             url: None,
             content: Vec::new(),
+            nest: 0,
         }
     }
 
@@ -92,6 +95,11 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
         for e in self.events.by_ref() {
             match e {
                 Event::Start(Tag::Link { ref dest_url, .. }) => {
+                    if is_inline_allowed(&self.state) {
+                        warn_unexpected("nested link", "link text");
+                        self.nest += 1;
+                        continue;
+                    }
                     let (url, action) = url_action(dest_url);
                     if !is_safe_link_target(&url) {
                         self.state = State::UnsafeLink;
@@ -122,100 +130,124 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                     } else {
                         return Some(e.into());
                     }
+                    self.nest = 0;
                 }
-                Event::End(TagEnd::Link) => match self.state {
-                    State::Embed => {
-                        let (url, mut content) = self.exit();
-
-                        let mut option = SectionOption::default();
-                        let title = if let Some(e) = content.first_mut() {
-                            // parse options, then strip /[-+.]/ from beginning of the title
-                            if let Event::Text(t) = e {
-                                let (opt, rest) = parse_embed_text(t);
-                                option = opt;
-                                *t = rest.into();
-                            }
-                            let mut title = String::new();
-                            html::push_html(&mut title, content.into_iter());
-                            Some(title)
-                        } else {
-                            None
-                        };
-                        let title = title.filter(|t| !t.is_empty());
-                        return Some(EmbedContent { title, url, option }.into());
+                Event::End(TagEnd::Link) => {
+                    if !is_inline_allowed(&self.state) {
+                        return Some(e.into());
                     }
-                    State::Include => {
-                        let (url, content) = self.exit();
-                        let language_tag = if content.is_empty() {
-                            Some("plain".to_string())
-                        } else {
+                    if self.nest != 0 {
+                        self.nest -= 1;
+                        continue;
+                    }
+                    match self.state {
+                        State::Embed => {
+                            let (url, mut content) = self.exit();
+
+                            let mut option = SectionOption::default();
+                            let title = if let Some(e) = content.first_mut() {
+                                // parse options, then strip /[-+.]/ from beginning of the title
+                                if let Event::Text(t) = e {
+                                    let (opt, rest) = parse_embed_text(t);
+                                    option = opt;
+                                    *t = rest.into();
+                                }
+                                let mut title = String::new();
+                                html::push_html(&mut title, content.into_iter());
+                                Some(title)
+                            } else {
+                                None
+                            };
+                            let title = title.filter(|t| !t.is_empty());
+                            return Some(EmbedContent { title, url, option }.into());
+                        }
+                        State::Include => {
+                            let (url, content) = self.exit();
+                            let language_tag = if content.is_empty() {
+                                Some("plain".to_string())
+                            } else {
+                                let mut text = String::new();
+                                html::push_html(&mut text, content.into_iter());
+                                Some(text)
+                            };
+
+                            let include_path = root_dir().join(&url);
+                            let content = fs::read_to_string(&include_path).unwrap_or_else(|err| {
+                                record_include_error();
+                                color_print::ceprintln!(
+                                    "<y>Warning: failed to include file `{}` resolved to `{}`: {}</>",
+                                    url,
+                                    include_path,
+                                    err
+                                );
+                                format!("failed to include file: {url}")
+                            });
+                            let escaped = htmlize::escape_text(content);
+                            let html = html_code_block(&escaped, &language_tag.unwrap_or_default());
+                            return Some(Event::Html(html.into()).into());
+                        }
+                        State::LocalLink => {
+                            let (url, content) = self.exit();
+                            let text = if content.is_empty() {
+                                None
+                            } else {
+                                let mut text = String::new();
+                                html::push_html(&mut text, content.into_iter());
+                                Some(text)
+                            };
+                            return Some(LocalLink { url, text }.into());
+                        }
+                        State::ExternalLink => {
+                            let (url, content) = self.exit();
                             let mut text = String::new();
                             html::push_html(&mut text, content.into_iter());
-                            Some(text)
-                        };
-
-                        let include_path = root_dir().join(&url);
-                        let content = fs::read_to_string(&include_path).unwrap_or_else(|err| {
-                            record_include_error();
-                            color_print::ceprintln!(
-                                "<y>Warning: failed to include file `{}` resolved to `{}`: {}</>",
-                                url,
-                                include_path,
-                                err
-                            );
-                            format!("failed to include file: {url}")
-                        });
-                        let escaped = htmlize::escape_text(content);
-                        let html = html_code_block(&escaped, &language_tag.unwrap_or_default());
-                        return Some(Event::Html(html.into()).into());
-                    }
-                    State::LocalLink => {
-                        let (url, content) = self.exit();
-                        let text = if content.is_empty() {
-                            None
-                        } else {
+                            let formatted_title;
+                            let title = if url == text {
+                                &url
+                            } else {
+                                formatted_title = format!("{text} [{url}]");
+                                &formatted_title
+                            };
+                            let html = html_link(&url, title, &text, State::ExternalLink.strify());
+                            return Some(Event::Html(html.into()).into());
+                        }
+                        State::AssetFile => {
+                            let (url, content) = self.exit();
                             let mut text = String::new();
                             html::push_html(&mut text, content.into_iter());
-                            Some(text)
-                        };
-                        return Some(LocalLink { url, text }.into());
+                            let html = html_link(&url, &text, &text, State::AssetFile.strify());
+                            return Some(Event::Html(html.into()).into());
+                        }
+                        State::UnsafeLink => {
+                            let (_, content) = self.exit();
+                            let text = if content.is_empty() {
+                                String::new()
+                            } else {
+                                let mut html = String::new();
+                                html::push_html(&mut html, content.into_iter());
+                                HTMLContent::Plain(html).remove_all_tags()
+                            };
+                            return Some(Event::Text(text.into()).into());
+                        }
+                        _ => return Some(e.into()),
                     }
-                    State::ExternalLink => {
-                        let (url, content) = self.exit();
-                        let mut text = String::new();
-                        html::push_html(&mut text, content.into_iter());
-                        let formatted_title;
-                        let title = if url == text {
-                            &url
-                        } else {
-                            formatted_title = format!("{text} [{url}]");
-                            &formatted_title
-                        };
-                        let html = html_link(&url, title, &text, State::ExternalLink.strify());
-                        return Some(Event::Html(html.into()).into());
+                }
+                Event::Start(ref tag) if is_inline_allowed(&self.state) => {
+                    if is_formatting_start(tag) {
+                        self.nest += 1;
+                        self.content.push(e);
+                    } else {
+                        warn_unexpected("block-level start tag", "link text");
                     }
-                    State::AssetFile => {
-                        let (url, content) = self.exit();
-                        let mut text = String::new();
-                        html::push_html(&mut text, content.into_iter());
-                        let html = html_link(&url, &text, &text, State::AssetFile.strify());
-                        return Some(Event::Html(html.into()).into());
+                }
+                Event::End(ref tag) if is_inline_allowed(&self.state) => {
+                    if is_formatting_end(tag) {
+                        self.nest = self.nest.saturating_sub(1);
+                        self.content.push(e);
+                    } else {
+                        warn_unexpected("block-level end tag", "link text");
                     }
-                    State::UnsafeLink => {
-                        let (_, content) = self.exit();
-                        let text = if content.is_empty() {
-                            String::new()
-                        } else {
-                            let mut html = String::new();
-                            html::push_html(&mut html, content.into_iter());
-                            HTMLContent::Plain(html).remove_all_tags()
-                        };
-                        return Some(Event::Text(text.into()).into());
-                    }
-                    _ => return Some(e.into()),
-                },
-                Event::Text(_) if is_inline_allowed(&self.state) => self.content.push(e),
-                Event::InlineHtml(_) if is_inline_allowed(&self.state) => self.content.push(e),
+                }
                 Event::InlineMath(ref math) => {
                     let replaced = Event::Text(format!("${math}$").into());
                     if is_inline_allowed(&self.state) {
@@ -233,7 +265,20 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                         return Some(replaced.into());
                     }
                 }
-                Event::Code(_) if is_inline_allowed(&self.state) => {
+                Event::SoftBreak if is_inline_allowed(&self.state) => {
+                    self.content.push(Event::Text(" ".into()));
+                }
+                Event::Rule | Event::TaskListMarker(_) if is_inline_allowed(&self.state) => {
+                    warn_unexpected("rule or task list marker", "link text");
+                }
+                Event::Text(_)
+                | Event::InlineHtml(_)
+                | Event::Code(_)
+                | Event::Html(_)
+                | Event::HardBreak
+                | Event::FootnoteReference(_)
+                    if is_inline_allowed(&self.state) =>
+                {
                     self.content.push(e);
                 }
                 _ => return Some(e.into()),
@@ -561,5 +606,110 @@ mod tests {
         assert!(!html.contains(r#"title="<span"#));
         assert!(!html.contains("&lt;span"));
         assert!(html.contains(r#"><span lang="zh">中文</span></a>"#));
+    }
+
+    #[test]
+    fn test_link_text_soft_break_is_normalized_to_space() {
+        let source = "[line one\nline two](./target)";
+        let events = Parser::new_ext(source, crate::compiler::parser::OPTIONS);
+        let events = TextElaborator::process(events);
+        let actual = Embed::process_with_roots(
+            events,
+            Slug::new("index"),
+            ASSETS_DIR.to_string(),
+            TREES_DIR.to_string(),
+        )
+        .collect::<Vec<_>>();
+
+        assert!(!actual
+            .iter()
+            .any(|event| matches!(event, EventExtended::CMark(Event::SoftBreak))));
+
+        let local_link = actual
+            .iter()
+            .find_map(|event| match event {
+                EventExtended::Local(local_link) => Some(local_link),
+                _ => None,
+            })
+            .expect("expected a local link event");
+        assert_eq!(local_link.url, "/target");
+        assert_eq!(local_link.text.as_deref(), Some("line one line two"));
+    }
+
+    #[test]
+    fn test_link_text_formatting_is_scoped_within_link() {
+        let source = "[a *b* c](./target)";
+        let events = Parser::new_ext(source, crate::compiler::parser::OPTIONS);
+        let events = TextElaborator::process(events);
+        let actual = Embed::process_with_roots(
+            events,
+            Slug::new("index"),
+            ASSETS_DIR.to_string(),
+            TREES_DIR.to_string(),
+        )
+        .collect::<Vec<_>>();
+
+        assert!(!actual
+            .iter()
+            .any(|event| matches!(event, EventExtended::CMark(Event::Start(Tag::Emphasis)))));
+        assert!(!actual
+            .iter()
+            .any(|event| matches!(event, EventExtended::CMark(Event::End(TagEnd::Emphasis)))));
+
+        let local_link = actual
+            .iter()
+            .find_map(|event| match event {
+                EventExtended::Local(local_link) => Some(local_link),
+                _ => None,
+            })
+            .expect("expected a local link event");
+        assert_eq!(local_link.text.as_deref(), Some("a <em>b</em> c"));
+    }
+
+    #[test]
+    fn test_external_link_text_keeps_formatting() {
+        let source = "[**bold**](https://example.com)";
+        let events = Parser::new_ext(source, crate::compiler::parser::OPTIONS);
+        let events = TextElaborator::process(events);
+        let actual = Embed::process_with_roots(
+            events,
+            Slug::new("index"),
+            ASSETS_DIR.to_string(),
+            TREES_DIR.to_string(),
+        )
+        .collect::<Vec<_>>();
+
+        let html = actual
+            .iter()
+            .find_map(|event| match event {
+                EventExtended::CMark(Event::Html(html)) => Some(html.as_ref()),
+                _ => None,
+            })
+            .expect("expected an html link event");
+        assert!(html.contains(r#"class="link external""#));
+        assert!(html.contains(r#"><strong>bold</strong></a>"#));
+    }
+
+    #[test]
+    fn test_link_text_inline_math_is_preserved() {
+        let source = "[$x$](./target)";
+        let events = Parser::new_ext(source, crate::compiler::parser::OPTIONS);
+        let events = TextElaborator::process(events);
+        let actual = Embed::process_with_roots(
+            events,
+            Slug::new("index"),
+            ASSETS_DIR.to_string(),
+            TREES_DIR.to_string(),
+        )
+        .collect::<Vec<_>>();
+
+        let local_link = actual
+            .iter()
+            .find_map(|event| match event {
+                EventExtended::Local(local_link) => Some(local_link),
+                _ => None,
+            })
+            .expect("expected a local link event");
+        assert_eq!(local_link.text.as_deref(), Some("$x$"));
     }
 }

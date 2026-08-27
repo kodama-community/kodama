@@ -8,6 +8,7 @@ pub mod content;
 pub mod embed_markdown;
 pub mod figure;
 pub mod footnote;
+pub mod inline_content;
 pub mod metadata;
 pub mod path_resolution;
 pub mod processor;

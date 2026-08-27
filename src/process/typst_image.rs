@@ -2,7 +2,7 @@
 // Released under the GPL-3.0 license as described in the file LICENSE.
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
-use std::{fmt::Write, fs};
+use std::fs;
 
 use camino::Utf8PathBuf;
 use pulldown_cmark::{Event, Tag, TagEnd};
@@ -19,6 +19,7 @@ use crate::{
 };
 
 use super::{
+    inline_content::{is_formatting_end, is_formatting_start, warn_unexpected, write_leaf, Escape},
     path_resolution::{relocate_trees_path, resolve_section_url},
     processor::url_action,
 };
@@ -30,6 +31,7 @@ pub struct TypstImage<E> {
     url: Option<String>,
     content: Option<String>,
     current_slug: Slug,
+    nest: usize,
 }
 
 impl<E> TypstImage<E> {
@@ -41,6 +43,7 @@ impl<E> TypstImage<E> {
             url: None,
             content: None,
             current_slug,
+            nest: 0,
         }
     }
 
@@ -51,6 +54,18 @@ impl<E> TypstImage<E> {
     }
 }
 
+/// Collects a leaf event into the content buffer according to the current
+/// state: raw source text for inline typst / shared imports, HTML-escaped text
+/// for figure captions.
+fn collect(state: &State, content: &mut Option<String>, e: Event<'_>) {
+    let c = content.get_or_insert_default();
+    let escape = match state {
+        State::ImageSpan | State::ImageBlock | State::ImageCode => Escape::Body,
+        _ => Escape::Raw,
+    };
+    write_leaf(c, e, escape, true);
+}
+
 impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
     type Item = Event<'e>;
 
@@ -58,6 +73,11 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
         for e in self.events.by_ref() {
             match e {
                 Event::Start(Tag::Link { ref dest_url, .. }) => {
+                    if allow_inline(&self.state) {
+                        warn_unexpected("nested link", "link content");
+                        self.nest += 1;
+                        continue;
+                    }
                     let (url, action) = url_action(dest_url);
                     if is_inline_typst(dest_url) {
                         self.state = State::InlineTypst;
@@ -80,169 +100,210 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
                     } else {
                         return Some(e);
                     }
+                    self.nest = 0;
                 }
-                Event::Text(ref content) if allow_inline(&self.state) => {
-                    self.content.get_or_insert_default().push_str(content);
-                }
-                Event::InlineMath(ref content) if allow_inline(&self.state) => {
-                    let c = self.content.get_or_insert_default();
-                    let _ = write!(c, "${content}$");
-                }
-                Event::Code(ref content) if allow_inline(&self.state) => {
-                    let c = self.content.get_or_insert_default();
-                    let _ = write!(c, "<code>{content}</code>");
-                }
-                Event::End(TagEnd::Link) => match self.state {
-                    State::Html => {
-                        let typst_url =
-                            typst_path(self.current_slug, &self.url.take().unwrap_or_default());
-                        let html = if environment::is_check() {
-                            let trees_dir = environment::trees_dir();
-                            match typst_cli::file_to_html(typst_url.as_str(), trees_dir.as_str()) {
-                                Ok(inline_html) => inline_html,
-                                Err(err) => {
-                                    inline_typst::record_typst_render_error();
-                                    color_print::ceprintln!(
-                                        "<r>{:?} at {}</>",
-                                        err,
-                                        self.current_slug
-                                    );
-                                    String::new()
-                                }
-                            }
-                        } else {
-                            let html_path = output_path(typst_url.with_extension("html"));
-                            match write_to_inline_html(typst_url, html_path) {
-                                Ok(inline_html) => inline_html,
-                                Err(err) => {
-                                    inline_typst::record_typst_render_error();
-                                    color_print::ceprintln!(
-                                        "<r>{:?} at {}</>",
-                                        err,
-                                        self.current_slug
-                                    );
-                                    String::new()
-                                }
-                            }
-                        };
-
-                        self.exit();
-                        return Some(Event::Html(html.into()));
+                Event::End(TagEnd::Link) => {
+                    if !allow_inline(&self.state) {
+                        return Some(e);
                     }
-                    State::InlineTypst => {
-                        let shareds = self.shareds.join("\n");
-                        let inline_url = if let Some(url) = self.url.take() {
-                            url
-                        } else {
-                            color_print::ceprintln!(
-                                "<y>Warning: missing inline typst url at `{}`.</>",
-                                self.current_slug
-                            );
-                            self.state = State::None;
-                            self.content = None;
-                            continue;
-                        };
-                        let auto_math_mode = inline_url.split('-').skip(1).any(|arg| arg == "math");
+                    if self.nest != 0 {
+                        self.nest -= 1;
+                        continue;
+                    }
+                    match self.state {
+                        State::Html => {
+                            let typst_url =
+                                typst_path(self.current_slug, &self.url.take().unwrap_or_default());
+                            let html = if environment::is_check() {
+                                let trees_dir = environment::trees_dir();
+                                match typst_cli::file_to_html(
+                                    typst_url.as_str(),
+                                    trees_dir.as_str(),
+                                ) {
+                                    Ok(inline_html) => inline_html,
+                                    Err(err) => {
+                                        inline_typst::record_typst_render_error();
+                                        color_print::ceprintln!(
+                                            "<r>{:?} at {}</>",
+                                            err,
+                                            self.current_slug
+                                        );
+                                        String::new()
+                                    }
+                                }
+                            } else {
+                                let html_path = output_path(typst_url.with_extension("html"));
+                                match write_to_inline_html(typst_url, html_path) {
+                                    Ok(inline_html) => inline_html,
+                                    Err(err) => {
+                                        inline_typst::record_typst_render_error();
+                                        color_print::ceprintln!(
+                                            "<r>{:?} at {}</>",
+                                            err,
+                                            self.current_slug
+                                        );
+                                        String::new()
+                                    }
+                                }
+                            };
 
-                        let mut inline_typst = self.content.take().unwrap_or_default();
-                        inline_typst = smart_punctuation_reverse(&inline_typst);
-
-                        if auto_math_mode {
-                            inline_typst = format!("${}$", inline_typst);
+                            self.exit();
+                            return Some(Event::Html(html.into()));
                         }
-
-                        let placeholder = format!(
-                            "{INLINE_PLACEHOLDER}{}\u{0}",
-                            inline_typst::push_inline_formula(
-                                shareds,
-                                inline_typst,
-                                self.current_slug
-                            )
-                        );
-                        self.exit();
-                        return Some(Event::Html(placeholder.into()));
-                    }
-                    State::ImageSpan => {
-                        let typst_url =
-                            typst_path(self.current_slug, &self.url.take().unwrap_or_default());
-                        let caption = self.content.take().unwrap_or_default();
-                        let svg_url = typst_url.with_extension("svg");
-                        self.exit();
-
-                        let html = encode_typst_figure(&TypstFigure {
-                            svg_url: svg_url.to_string(),
-                            caption,
-                            kind: TypstFigureKind::Span,
-                            code: String::new(),
-                        });
-                        return Some(Event::Html(html.into()));
-                    }
-                    State::ImageBlock => {
-                        let typst_url =
-                            typst_path(self.current_slug, &self.url.take().unwrap_or_default());
-                        let caption = self.content.take().unwrap_or_default();
-                        let svg_url = typst_url.with_extension("svg");
-                        self.exit();
-
-                        let html = encode_typst_figure(&TypstFigure {
-                            svg_url: svg_url.to_string(),
-                            caption,
-                            kind: TypstFigureKind::Block,
-                            code: String::new(),
-                        });
-                        return Some(Event::Html(html.into()));
-                    }
-                    State::ImageCode => {
-                        let typst_url =
-                            typst_path(self.current_slug, &self.url.take().unwrap_or_default());
-                        let caption = self.content.take().unwrap_or_default();
-                        let svg_url = typst_url.with_extension("svg");
-                        self.exit();
-
-                        let root_dir = environment::trees_dir();
-                        let full_path = root_dir.join(typst_url);
-                        let code = fs::read_to_string(format!("{}.code", full_path))
-                            .or_else(|_| fs::read_to_string(&full_path))
-                            .unwrap_or_else(|err| {
+                        State::InlineTypst => {
+                            let shareds = self.shareds.join("\n");
+                            let inline_url = if let Some(url) = self.url.take() {
+                                url
+                            } else {
                                 color_print::ceprintln!(
-                                    "<y>Warning: failed to read typst source `{}`: {}</>",
-                                    full_path,
-                                    err
+                                    "<y>Warning: missing inline typst url at `{}`.</>",
+                                    self.current_slug
                                 );
-                                String::new()
-                            });
+                                self.state = State::None;
+                                self.content = None;
+                                continue;
+                            };
+                            let auto_math_mode =
+                                inline_url.split('-').skip(1).any(|arg| arg == "math");
 
-                        let html = encode_typst_figure(&TypstFigure {
-                            svg_url: svg_url.to_string(),
-                            caption,
-                            kind: TypstFigureKind::Code,
-                            code,
-                        });
-                        return Some(Event::Html(html.into()));
-                    }
-                    State::Shared => {
-                        let Some(typst_url) = self.url.take() else {
-                            color_print::ceprintln!(
-                                "<y>Warning: missing shared typst url at `{}`.</>",
-                                self.current_slug
+                            let mut inline_typst = self.content.take().unwrap_or_default();
+                            inline_typst = smart_punctuation_reverse(&inline_typst);
+
+                            if auto_math_mode {
+                                inline_typst = format!("${}$", inline_typst);
+                            }
+
+                            let placeholder = format!(
+                                "{INLINE_PLACEHOLDER}{}\u{0}",
+                                inline_typst::push_inline_formula(
+                                    shareds,
+                                    inline_typst,
+                                    self.current_slug
+                                )
                             );
-                            self.state = State::None;
-                            continue;
-                        };
-                        let imported = self.content.take();
-                        /*
-                         * Unspecified import items will default to all (*),
-                         * but we recommend users to manually enter "*" to avoid ambiguity.
-                         */
-                        let imported = imported.as_ref().map_or("*", |s| s);
-                        self.shareds
-                            .push(format!(r#"#import "{typst_url}": {imported}"#));
+                            self.exit();
+                            return Some(Event::Html(placeholder.into()));
+                        }
+                        State::ImageSpan => {
+                            let typst_url =
+                                typst_path(self.current_slug, &self.url.take().unwrap_or_default());
+                            let caption = self.content.take().unwrap_or_default();
+                            let svg_url = typst_url.with_extension("svg");
+                            self.exit();
 
-                        self.state = State::None;
+                            let html = encode_typst_figure(&TypstFigure {
+                                svg_url: svg_url.to_string(),
+                                caption,
+                                kind: TypstFigureKind::Span,
+                                code: String::new(),
+                            });
+                            return Some(Event::Html(html.into()));
+                        }
+                        State::ImageBlock => {
+                            let typst_url =
+                                typst_path(self.current_slug, &self.url.take().unwrap_or_default());
+                            let caption = self.content.take().unwrap_or_default();
+                            let svg_url = typst_url.with_extension("svg");
+                            self.exit();
+
+                            let html = encode_typst_figure(&TypstFigure {
+                                svg_url: svg_url.to_string(),
+                                caption,
+                                kind: TypstFigureKind::Block,
+                                code: String::new(),
+                            });
+                            return Some(Event::Html(html.into()));
+                        }
+                        State::ImageCode => {
+                            let typst_url =
+                                typst_path(self.current_slug, &self.url.take().unwrap_or_default());
+                            let caption = self.content.take().unwrap_or_default();
+                            let svg_url = typst_url.with_extension("svg");
+                            self.exit();
+
+                            let root_dir = environment::trees_dir();
+                            let full_path = root_dir.join(typst_url);
+                            let code = fs::read_to_string(format!("{}.code", full_path))
+                                .or_else(|_| fs::read_to_string(&full_path))
+                                .unwrap_or_else(|err| {
+                                    color_print::ceprintln!(
+                                        "<y>Warning: failed to read typst source `{}`: {}</>",
+                                        full_path,
+                                        err
+                                    );
+                                    String::new()
+                                });
+
+                            let html = encode_typst_figure(&TypstFigure {
+                                svg_url: svg_url.to_string(),
+                                caption,
+                                kind: TypstFigureKind::Code,
+                                code,
+                            });
+                            return Some(Event::Html(html.into()));
+                        }
+                        State::Shared => {
+                            let Some(typst_url) = self.url.take() else {
+                                color_print::ceprintln!(
+                                    "<y>Warning: missing shared typst url at `{}`.</>",
+                                    self.current_slug
+                                );
+                                self.state = State::None;
+                                continue;
+                            };
+                            let imported = self.content.take();
+                            /*
+                             * Unspecified import items will default to all (*),
+                             * but we recommend users to manually enter "*" to avoid ambiguity.
+                             */
+                            let imported = imported.as_ref().map_or("*", |s| s);
+                            self.shareds
+                                .push(format!(r#"#import "{typst_url}": {imported}"#));
+
+                            self.state = State::None;
+                        }
+                        _ => return Some(e),
                     }
-                    _ => return Some(e),
-                },
-                _ => return Some(e),
+                }
+                Event::Start(ref tag) => {
+                    if allow_inline(&self.state) {
+                        if is_formatting_start(tag) {
+                            self.nest += 1;
+                        } else {
+                            warn_unexpected("block-level start tag", "caption");
+                        }
+                    } else {
+                        return Some(e);
+                    }
+                }
+                Event::End(ref tag) => {
+                    if allow_inline(&self.state) {
+                        if is_formatting_end(tag) {
+                            self.nest = self.nest.saturating_sub(1);
+                        } else {
+                            warn_unexpected("block-level end tag", "caption");
+                        }
+                    } else {
+                        return Some(e);
+                    }
+                }
+                Event::Html(_)
+                | Event::FootnoteReference(_)
+                | Event::TaskListMarker(_)
+                | Event::Rule => {
+                    if allow_inline(&self.state) {
+                        warn_unexpected("event", "caption");
+                    } else {
+                        return Some(e);
+                    }
+                }
+                _ => {
+                    if allow_inline(&self.state) {
+                        collect(&self.state, &mut self.content, e);
+                    } else {
+                        return Some(e);
+                    }
+                }
             }
         }
 
@@ -346,5 +407,23 @@ mod tests {
         assert_eq!(decode_typst_figure("<img src=\"x.png\" />"), None);
         assert_eq!(decode_typst_figure("plain text"), None);
         assert_eq!(decode_typst_figure(""), None);
+    }
+
+    #[test]
+    fn test_image_span_caption_collects_inline_content_and_escapes() {
+        crate::environment::mock_environment().unwrap();
+        let source = "[a <b> *c* `d` $x$](fig.typ#:span)";
+        let events = pulldown_cmark::Parser::new_ext(source, crate::compiler::parser::OPTIONS);
+        let actual = TypstImage::process(events, Slug::new("index")).collect::<Vec<_>>();
+
+        let html = actual
+            .iter()
+            .find_map(|e| match e {
+                Event::Html(html) => Some(html.as_ref()),
+                _ => None,
+            })
+            .expect("expected an html event");
+        let figure = decode_typst_figure(html).expect("expected a typst figure marker");
+        assert_eq!(figure.caption, "a &lt;b&gt; c <code>d</code> $x$");
     }
 }
