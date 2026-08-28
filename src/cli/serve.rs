@@ -15,6 +15,7 @@ use crate::{
 };
 
 mod process;
+mod server;
 mod watch;
 
 use process::spawn_serve_process;
@@ -138,6 +139,10 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
         Some(spawn_serve_process()?)
     };
 
+    // Print the server banner after watch setup, mirroring how the external
+    // server's own output used to arrive.
+    let initial_banner = serve.as_ref().and_then(process::ServeHandle::banner);
+
     let root_dir = crate::environment::root_dir();
     let trees_dir = crate::environment::trees_dir();
     let assets_dir = crate::environment::assets_dir();
@@ -158,6 +163,11 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
         &watched_paths,
         assets_dir.as_path(),
         print_json,
+        || {
+            if let Some(banner) = &initial_banner {
+                println!("{banner}");
+            }
+        },
         |changed_paths| {
             let analysis = analyze_watch_changes(
                 changed_paths,
@@ -188,9 +198,11 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
                     color_print::ceprintln!(
                         "<y>[watch] Config changed. Restarting serve process.</>"
                     );
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    child.kill();
                     serve = Some(spawn_serve_process()?);
+                    if let Some(banner) = serve.as_ref().and_then(process::ServeHandle::banner) {
+                        println!("{banner}");
+                    }
                 }
             } else if !analysis.stats.has_effective_changes() {
                 color_print::ceprintln!(
@@ -218,9 +230,9 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
         },
     )?;
 
-    // After watching process is done, kill the miniserve process.
+    // After watching process is done, stop the HTTP server.
     if let Some(mut child) = serve {
-        let _ = child.kill();
+        child.kill();
     }
 
     Ok(())

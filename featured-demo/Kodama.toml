@@ -33,7 +33,6 @@ elaborate-cjk-text = true
 [serve]
 edit = "vscode://file/"
 output = "./.cache/publish"
-server = "builtin"
 command = ["miniserve", "<output>", "--index", "index.html", "--pretty-urls", "--port", "8087"]
 
 [publish]

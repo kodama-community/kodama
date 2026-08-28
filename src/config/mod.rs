@@ -219,4 +219,30 @@ mod test {
             "#;
         assert!(crate::config::parse_config(toml).is_err());
     }
+
+    #[test]
+    fn test_empty_serve_section_uses_defaults() {
+        let config = crate::config::parse_config("[serve]").unwrap();
+        assert_eq!(config.serve.output, "./.cache/publish");
+        assert!(config.serve.command.is_empty());
+    }
+
+    #[test]
+    fn test_partial_serve_section_defaults_missing_fields() {
+        let config = crate::config::parse_config("[serve]\noutput = \"./site\"").unwrap();
+        assert_eq!(config.serve.output, "./site");
+        assert!(config.serve.command.is_empty());
+    }
+
+    #[test]
+    fn test_serve_command_is_parsed_for_external_server() {
+        let config = crate::config::parse_config(
+            "[serve]\ncommand = [\"miniserve\", \"<output>\", \"--index\", \"index.html\"]",
+        )
+        .unwrap();
+        assert_eq!(
+            config.serve.command,
+            ["miniserve", "<output>", "--index", "index.html"]
+        );
+    }
 }

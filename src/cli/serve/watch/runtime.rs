@@ -13,33 +13,38 @@ use super::strategy::{
 };
 
 /// from: https://github.com/notify-rs/notify/blob/main/examples/monitor_raw.rs#L18
-pub(in crate::cli::serve) fn watch_paths<P: AsRef<Utf8Path>, F>(
+pub(in crate::cli::serve) fn watch_paths<P: AsRef<Utf8Path>, F, R>(
     watched_paths: &[P],
     assets_dir: &Utf8Path,
     quiet: bool,
+    ready: R,
     mut action: F,
 ) -> eyre::Result<()>
 where
     F: FnMut(&[Utf8PathBuf]) -> eyre::Result<()>,
+    R: FnOnce(),
 {
     watch_paths_with_strategy(
         watched_paths,
         assets_dir,
         default_watch_strategy(),
         quiet,
+        ready,
         &mut action,
     )
 }
 
-fn watch_paths_with_strategy<P: AsRef<Utf8Path>, F>(
+fn watch_paths_with_strategy<P: AsRef<Utf8Path>, F, R>(
     watched_paths: &[P],
     assets_dir: &Utf8Path,
     strategy: WatchStrategy,
     quiet: bool,
+    ready: R,
     action: &mut F,
 ) -> eyre::Result<()>
 where
     F: FnMut(&[Utf8PathBuf]) -> eyre::Result<()>,
+    R: FnOnce(),
 {
     let (tx, rx) = std::sync::mpsc::channel();
     let mut batcher = WatchBatcher::new(strategy.debounce);
@@ -85,6 +90,8 @@ where
     if !quiet {
         println!("\n\nPress Ctrl+C to stop watching.\n");
     }
+
+    ready();
 
     loop {
         let now = Instant::now();
