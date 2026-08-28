@@ -28,11 +28,18 @@ inline-script = false
 allow-unsafe-html = false
 asref = true
 output = "./publish"
+elaborate-cjk-text = true
 
 [serve]
 edit = "vscode://file/"
 output = "./.cache/publish"
+server = "builtin"
 command = ["miniserve", "<output>", "--index", "index.html", "--pretty-urls", "--port", "8087"]
 
 [publish]
 rss = false
+
+[suffix]
+markdown = "md"
+typst = "typst"
+typst-lib = "typ"

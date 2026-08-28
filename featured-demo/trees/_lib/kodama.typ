@@ -25,7 +25,7 @@
   }
 })
 
-#let auto-frame(content) = compatibled-html(() => html.frame, () => content)
+#let auto-frame(content) = compatibled-html(() => x => html.elem("span", attrs: (class: "auto-frame"), box(html.frame(x))), () => content)
 #let auto-figure(content) = with-target-check((export-target) => {
   if export-target == "html" {
     html.figure(content) // main.css: `figure { text-align: center; }`
@@ -344,26 +344,6 @@
 #let bounded(eq) = text(top-edge: "bounds", bottom-edge: "bounds", eq)
 #let to-em(pt) = str(pt / text.size.pt()) + "em"
 
-// a dict that stores the height of equations
-#let equations-height-dict = state("eq_height_dict", (:))
-#let is-inside-pin = state("inside_pin", false)
-
-#let pin(label) = context {
-  let height = here().position().y
-  equations-height-dict.update(it => {
-    if label in it.keys() or height < 0.000001pt { it } else {
-      it.insert(label, height); it
-    }
-  })
-}
-
-#let add-pin(eq) = {
-  let label = repr(eq)
-  is-inside-pin.update(true)
-  $ inline(pin(label)#bounded(eq)) $
-  is-inside-pin.update(false)
-}
-
 #let kodama(doc) = {
   with-target-check((export-target) => {
     if export-target == "paged" {
@@ -374,21 +354,13 @@
       show math.equation.where(block: false): it => {
         with-target-check((export-target) => {
           if export-target == "html" {
-            let label = repr(it)
-            if label in equations-height-dict.final().keys() {
-              let height = equations-height-dict.final().at(label, default: none)
-              equations-height-dict.update(d => {
-                d.insert(label, height); d
-              })
-              let y-length = measure(bounded(it)).height
-              let shift = y-length - height
-              box(html.elem("span", attrs: (
-                class: "typst-inline", //
-                style: "vertical-align: -" + to-em(shift.pt()) + ";",
-              ), html.frame(bounded(it))))
-            } else {
-              box(html.frame(add-pin(it)))
-            }
+            let y-length = measure(bounded(it)).height
+            let baseline = measure(text(top-edge: "bounds", bottom-edge: "baseline", it)).height
+            let shift = y-length - baseline
+            html.elem("span", attrs: (
+              class: "typst-inline", //
+              style: "vertical-align: -" + to-em(shift.pt()) + ";",
+            ), box(html.frame(bounded(it))))
           } else {
             it
           }
@@ -397,11 +369,7 @@
       show math.equation.where(block: true): it => {
         with-target-check((export-target) => {
           if export-target == "html" {
-            if is-inside-pin.get() {
-              html.frame(it)
-            } else {
-              html.elem("div", attrs: (class: "typst-block"), html.frame(it))
-            }
+            html.elem("div", attrs: (class: "typst-block"), html.frame(it))
           } else {
             it
           }
