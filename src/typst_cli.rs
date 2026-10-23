@@ -2,10 +2,11 @@
 // Released under the GPL-3.0 license as described in the file LICENSE.
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
-use std::{fs, io::Write, process::Command};
+use std::{fs, io::Write, process::Command, sync::LazyLock};
 
 use camino::Utf8Path;
 use eyre::{eyre, WrapErr};
+use regex_lite::Regex;
 
 use crate::{
     environment::{self, file_meta_updated},
@@ -47,18 +48,42 @@ pub fn write_to_inline_html<P: AsRef<Utf8Path>>(
 }
 
 pub fn html_to_body_content(html: &str) -> eyre::Result<String> {
-    let start_pos = html
-        .find("<html")
-        .and_then(|pos| html[pos..].find('>').map(|offset| pos + offset + 1))
-        .ok_or_else(|| eyre!("missing `<html>` tag in typst html output"))?;
-    let end_pos = html
-        .rfind("</html>")
-        .ok_or_else(|| eyre!("missing `</html>` tag in typst html output"))?;
-    if end_pos < start_pos {
-        return Err(eyre!("malformed html range in typst html output"));
+    let root = element_content(html, "html")
+        .ok_or_else(|| eyre!("missing `<html>` tags in typst html output"))?;
+    let body = extract_body_content(root)
+        .ok_or_else(|| eyre!("missing `<body>` tags in typst html output"))?;
+    let mut content = String::new();
+    if let Some(head) = element_content(root, "head") {
+        for style in style_elements().find_iter(head) {
+            // Keep styles with the cached fragment. The document writer moves
+            // these marked elements into the page head and deduplicates them.
+            content.push_str("<style data-kodama-typst");
+            content.push_str(&style.as_str()["<style".len()..]);
+        }
     }
-    let content = &html[start_pos..end_pos];
-    Ok(content.to_string())
+    content.push_str(body);
+    Ok(content)
+}
+
+fn style_elements() -> &'static Regex {
+    static STYLES: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?s)<style(?:\s[^>]*|)>.*?</style\s*>").unwrap());
+    &STYLES
+}
+
+pub(crate) fn take_typst_styles(html: &str, styles: &mut Vec<String>) -> String {
+    static MARKED_STYLES: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?s)<style data-kodama-typst(?:\s[^>]*|)>.*?</style\s*>").unwrap()
+    });
+    MARKED_STYLES
+        .replace_all(html, |capture: &regex_lite::Captures<'_>| {
+            let style = capture[0].replacen(" data-kodama-typst", "", 1);
+            if !styles.contains(&style) {
+                styles.push(style);
+            }
+            String::new()
+        })
+        .into_owned()
 }
 
 /// Custom element tag used to delimit each inline formula within a single batched
@@ -159,10 +184,21 @@ pub fn source_to_inline_svgs_grouped(
 }
 
 fn extract_body_content(html: &str) -> Option<&str> {
-    let body_start = html.find("<body")?;
-    let tag_end = html[body_start..].find('>')? + body_start + 1;
-    let body_end = html.rfind("</body>")?;
-    (body_end >= tag_end).then(|| &html[tag_end..body_end])
+    // A script or stylesheet in the head can contain a literal `<body>`.
+    let html = html
+        .find("</head>")
+        .map_or(html, |end| &html[end + "</head>".len()..]);
+    element_content(html, "body")
+}
+
+fn element_content<'a>(html: &'a str, name: &str) -> Option<&'a str> {
+    let opening = Regex::new(&format!(
+        r#"<{name}(?:\s+(?:[^"'<>]|"[^"]*"|'[^']*')*)?\s*>"#
+    ))
+    .ok()?;
+    let start = opening.find(html)?.end();
+    let end = html.rfind(&format!("</{name}>"))?;
+    (end >= start).then(|| &html[start..end])
 }
 
 fn split_inline_segments(html: &str) -> eyre::Result<Vec<String>> {
@@ -322,14 +358,15 @@ mod tests {
 
     #[test]
     fn test_html_to_body_content_ok() {
-        let html = "<html><p>Hello</p></html>";
+        let html = "<html><head></head><body><p>Hello</p></body></html>";
         let body = html_to_body_content(html).unwrap();
         assert_eq!(body, "<p>Hello</p>");
     }
 
     #[test]
     fn test_html_to_body_content_with_html_attributes() {
-        let html = r#"<html lang="en"><p>Hello</p></html>"#;
+        let html =
+            r#"<html lang="en"><head></head><body data-note="a > b"><p>Hello</p></body></html>"#;
         let body = html_to_body_content(html).unwrap();
         assert_eq!(body, "<p>Hello</p>");
     }
@@ -338,6 +375,23 @@ mod tests {
     fn test_html_to_body_content_missing_tags() {
         let err = html_to_body_content("<p>Hello</p>");
         assert!(err.is_err());
+        assert!(html_to_body_content("<html><head></head><p>Hello</p></html>").is_err());
+    }
+
+    #[test]
+    fn test_html_to_body_content_preserves_styles_without_document_tags() {
+        let html = "<html lang='en'><head><meta charset='utf-8'><style>.math { color: red }</style></head><body><p>Formula</p></body></html>";
+        let fragment = html_to_body_content(html).unwrap();
+        let mut styles = Vec::new();
+        let body = super::take_typst_styles(&fragment.repeat(2), &mut styles);
+        assert_eq!(body, "<p>Formula</p><p>Formula</p>");
+        assert_eq!(styles, ["<style>.math { color: red }</style>"]);
+    }
+
+    #[test]
+    fn test_body_extraction_ignores_body_text_in_head() {
+        let html = r#"<html><head><script>const tag = '<body>';</script></head><body>Real body</body></html>"#;
+        assert_eq!(html_to_body_content(html).unwrap(), "Real body");
     }
 
     #[test]

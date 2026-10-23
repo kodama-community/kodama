@@ -116,3 +116,26 @@ fn html_errors_fail_build_and_are_retried() {
         assert!(!site.run(&["build"]).status.success());
     }
 }
+
+#[test]
+#[ignore = "requires Typst 0.15+ on PATH"]
+fn typst_pages_and_embeds_have_one_document_shell() {
+    let site = Site::new();
+    let header = "#import \"_lib/kodama.typ\": *\n#show: kodama\n";
+    site.write(
+        "trees/index.typst",
+        &format!("{header}#metadata((title: \"Root\\\\\",))\n$x+y$\n#embed(\"child\", \"Child\")"),
+    );
+    site.write(
+        "trees/child.typst",
+        &format!("{header}#metadata((title: \"Child\",))\n$a+b$"),
+    );
+    for _ in 0..2 {
+        site.build();
+        let page = fs::read_to_string(site.0.join("publish/index.html")).unwrap();
+        assert_eq!(page.matches("<head>").count(), 1);
+        assert_eq!(page.matches("<body>").count(), 1);
+        assert!(!page.contains("data-kodama-typst"));
+        assert!(page.contains("<svg"));
+    }
+}

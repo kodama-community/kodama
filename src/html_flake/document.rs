@@ -14,6 +14,10 @@ pub fn html_doc(
     footer_html: &str,
     catalog_html: &str,
 ) -> String {
+    let mut typst_styles = Vec::new();
+    let [header_html, article_inner, footer_html, catalog_html] =
+        [header_html, article_inner, footer_html, catalog_html]
+            .map(|html| crate::typst_cli::take_typst_styles(html, &mut typst_styles));
     let mut toc_class: Vec<&str> = vec![];
     if environment::is_toc_sticky() {
         toc_class.push("sticky-nav");
@@ -25,7 +29,7 @@ pub fn html_doc(
     let base_url = environment::base_url();
     let doc_type = "<!DOCTYPE html>";
 
-    let nav_html = html_nav(&toc_class, catalog_html);
+    let nav_html = html_nav(&toc_class, &catalog_html);
     let html = html!(html lang="en-US" {
         head {
             r#"
@@ -38,6 +42,7 @@ pub fn html_doc(
             (html_live_reload())
             // math should be loaded after scripts to handle dynamic content
             (html_import_math())
+            (typst_styles.concat())
             // main styles should be loaded after math to override formula font size
             (html_static_css())
             (html_dynamic_css())
@@ -48,7 +53,7 @@ pub fn html_doc(
         }
         body {
             (header_html)
-            (html_body_inner(&nav_html, article_inner, footer_html))
+            (html_body_inner(&nav_html, &article_inner, &footer_html))
         }
     });
     format!("{}\n{}", doc_type, html)
@@ -184,6 +189,21 @@ pub fn html_main_style() -> &'static str {
 mod tests {
     use super::{html_dynamic_css, html_live_reload};
     use crate::environment;
+
+    #[test]
+    fn typst_styles_are_deduplicated_in_the_document_head() {
+        let root = crate::test_io::case_dir("document-typst-styles");
+        environment::with_test_environment(root.clone(), environment::BuildMode::Publish, || {
+            let fragment = "<style data-kodama-typst>.formula{color:red}</style><p>Formula</p>";
+            let html = super::html_doc("Title", "", fragment, fragment, "");
+            let head_end = html.find("</head>").unwrap();
+            assert_eq!(html.matches(".formula{color:red}").count(), 1);
+            assert!(html[..head_end].contains(".formula{color:red}"));
+            assert!(!html[head_end..].contains(".formula{color:red}"));
+            assert!(!html.contains("data-kodama-typst"));
+        });
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn test_html_live_reload_disabled_outside_serve_mode() {
