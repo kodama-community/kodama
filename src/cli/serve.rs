@@ -120,9 +120,6 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
     };
 
     serve_build(None)?;
-    if print_json {
-        print_preview_event("ready")?;
-    }
     let config_file = environment::config_file();
     let config_file_canonical = config_file
         .canonicalize_utf8()
@@ -164,9 +161,13 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
         assets_dir.as_path(),
         print_json,
         || {
+            if print_json {
+                print_preview_event("ready")?;
+            }
             if let Some(banner) = &initial_banner {
                 println!("{banner}");
             }
+            Ok(())
         },
         |changed_paths| {
             let analysis = analyze_watch_changes(

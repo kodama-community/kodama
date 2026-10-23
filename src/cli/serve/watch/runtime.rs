@@ -22,7 +22,7 @@ pub(in crate::cli::serve) fn watch_paths<P: AsRef<Utf8Path>, F, R>(
 ) -> eyre::Result<()>
 where
     F: FnMut(&[Utf8PathBuf]) -> eyre::Result<()>,
-    R: FnOnce(),
+    R: FnOnce() -> eyre::Result<()>,
 {
     watch_paths_with_strategy(
         watched_paths,
@@ -44,7 +44,7 @@ fn watch_paths_with_strategy<P: AsRef<Utf8Path>, F, R>(
 ) -> eyre::Result<()>
 where
     F: FnMut(&[Utf8PathBuf]) -> eyre::Result<()>,
-    R: FnOnce(),
+    R: FnOnce() -> eyre::Result<()>,
 {
     let (tx, rx) = std::sync::mpsc::channel();
     let mut batcher = WatchBatcher::new(strategy.debounce);
@@ -91,7 +91,7 @@ where
         println!("\n\nPress Ctrl+C to stop watching.\n");
     }
 
-    ready();
+    ready()?;
 
     loop {
         let now = Instant::now();
