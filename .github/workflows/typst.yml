@@ -1,0 +1,39 @@
+name: Typst compatibility
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Typst ${{ matrix.typst }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        typst: ["0.15.0", "0.15.1"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: typst-cli@${{ matrix.typst }}
+      - name: Show Typst version
+        run: typst --version
+      - name: Rust tests
+        run: cargo test --locked --bin kodama
+      - name: Typst integration tests
+        run: cargo test --locked --test typst -- --include-ignored
+      - name: Build demo without caches
+        working-directory: featured-demo
+        run: cargo run --manifest-path ../Cargo.toml --locked -- build --no-cache
+      - name: Check demo
+        working-directory: featured-demo
+        run: cargo run --manifest-path ../Cargo.toml --locked -- check --strict
