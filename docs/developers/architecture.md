@@ -49,7 +49,7 @@ Discovery behavior:
 - Non-UTF-8 paths discovered during recursive walking are skipped with a warning.
 - A missing source tree is not fatal; it produces an empty workspace and a warning.
 
-Typst asset discovery is separate from section discovery. `.typ` files under the source tree are compiled to SVG output assets, while `.typst` files are section sources. Each rebuild checks the recorded inputs of SVG assets and recompiles only those whose source, dependencies, or Typst version changed.
+Typst asset discovery is separate from section discovery. `.typ` files under the source tree are compiled to SVG output assets, while `.typst` files are section sources. During incremental rebuilds, only dirty `.typ` files are recompiled, unless the build is a full scan.
 
 ## Path and URL Resolution
 
@@ -134,7 +134,7 @@ Embed link text has a compact option prefix grammar. Leading `+`, `-`, and `.` t
 
 ## Typst Processing Details
 
-Typst source processing first asks Typst to render the source into HTML. Kodama extracts the document body and parses structured marker elements emitted by the Kodama Typst library. Styles from Typst's document head travel with the cached fragment and are deduplicated into the final page head, including when sections are embedded.
+Typst source processing first asks Typst to render the source into HTML. Kodama then parses structured marker elements emitted by the Kodama Typst library.
 
 The Typst marker parser recognizes metadata, local links, embeds, and subtrees:
 
@@ -145,7 +145,7 @@ The Typst marker parser recognizes metadata, local links, embeds, and subtrees:
 
 Typst subtree parsing mirrors Markdown subtree behavior where possible: named subtrees resolve relative to the current slug, anonymous subtrees receive internal generated slugs, and title/taxon attributes become defaults only when the subtree content does not provide those metadata fields itself.
 
-Failures are wrapped with source and slug context because the Typst phase crosses a process boundary and may fail due to syntax errors, missing packages, unavailable fonts, or environmental issues. Rendering failures stop the build before failed section results are cached. Previously successful SVG assets remain available for preview, but do not turn a failed build into a success.
+Failures are wrapped with source and slug context because the Typst phase crosses a process boundary and may fail due to syntax errors, missing packages, unavailable fonts, or environmental issues.
 
 ## Graph Resolution
 
@@ -231,8 +231,6 @@ RSS generation uses compiled sections after graph resolution. Collection pages a
 
 Kodama uses source-entry caches for parsed sections and output hashes to avoid unnecessary writes. A cache version check protects against incompatible cache shape changes.
 
-Typst caches also record the compiler version and the input files reported by Typst. Changes to imported libraries, data files, or the compiler invalidate affected page, HTML-fragment, and SVG caches. Markdown sources participating in a shared inline compilation retain that batch's combined dependency set; unrelated sources retain their own dependencies. Pure Markdown builds do not require Typst.
-
 Incremental builds are driven by dirty paths:
 
 - Dirty source paths map to dirty source slugs.
@@ -249,15 +247,13 @@ For each source file, Kodama decides whether to parse from source or load a cach
 The source modification decision follows this order:
 
 1. If `--no-cache` is active, treat the source as modified.
-2. If a source belongs to a supplied dirty set, parse it again.
-3. Otherwise, reuse its entry only when the source's modification time and size match and its recorded Typst compiler version and input files remain unchanged.
-4. Parse again when an entry is missing, malformed, or stale. Record new cache state only after rendering succeeds.
+2. If a dirty set is supplied, only paths in that set are treated as modified, but dirty source paths still update their hash baseline for future cold builds.
+3. Without a dirty set, compare the current file hash with the stored hash.
 
 Dirty path expansion is conservative:
 
 - A known dirty `.md` or `.typst` source stays scoped to that source.
 - A dirty Typst dependency such as `.typ` or a non-source `.typst` path marks all Typst section sources dirty.
-- Recorded Typst dependencies also invalidate affected Markdown sections, including shared inline imports, and sources that import another known source.
 - An unknown file under the source tree, such as an include file, marks all sources dirty because Kodama does not maintain a dependency graph for arbitrary include relationships.
 
 After graph compilation, dirty source slugs are expanded to affected output slugs:
