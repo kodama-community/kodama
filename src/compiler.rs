@@ -74,21 +74,21 @@ impl Default for CompileOutputs {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) struct CachedSourceEntry {
-    pub sections: Vec<CachedSection>,
+pub(super) struct CachedSourceEntry<S = UnresolvedSection, D = Dependencies> {
+    pub sections: Vec<CachedSection<S>>,
     /// (mtime, size) of the source file when this entry was written, used for
     /// change detection without reading the source content. `None` for legacy
     /// entries, which are always reparsed.
     #[serde(default)]
     pub source_meta: Option<SourceMeta>,
     #[serde(default)]
-    pub typst_dependencies: Dependencies,
+    pub typst_dependencies: D,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) struct CachedSection {
+pub(super) struct CachedSection<S = UnresolvedSection> {
     pub slug: Slug,
-    pub section: UnresolvedSection,
+    pub section: S,
 }
 
 /// The source snapshot and actual Typst inputs behind an entry cache.
@@ -310,12 +310,12 @@ pub(super) fn write_entry_cache(
 ) -> eyre::Result<()> {
     let serialized = serde_json::to_string(&CachedSourceEntry {
         source_meta,
-        typst_dependencies: dependencies.clone(),
+        typst_dependencies: dependencies,
         sections: sections
             .iter()
             .map(|(slug, section)| CachedSection {
                 slug: *slug,
-                section: section.clone(),
+                section,
             })
             .collect(),
     })
@@ -366,7 +366,6 @@ fn load_shallow_sections(
             read_entry_cache(entry_path.as_path())
         {
             if cached_meta == source_meta && dependencies.is_current()? {
-                typst_cache::record_dependencies(&dependencies);
                 for (_, section) in &mut sections {
                     section.metadata.compute_textual_attrs();
                 }

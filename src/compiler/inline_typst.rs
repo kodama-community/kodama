@@ -69,8 +69,13 @@ pub(crate) fn push_inline_formula(shareds: String, source: String, current_slug:
 /// compiled inline svg html in formula order.
 pub fn compile_inline_batch() -> eyre::Result<RenderedInlineBatch> {
     let pending = INLINE_BATCH.with(|batch| std::mem::take(&mut batch.borrow_mut().pending));
-    let sources = pending.iter().map(|(_, _, slug)| *slug).collect();
+    let sources: HashSet<Slug> = pending.iter().map(|(_, _, slug)| *slug).collect();
     let (contents, dependencies) = typst_cache::capture_dependencies(|| compile_pending(pending))?;
+    let dependencies = if sources.is_empty() {
+        dependencies
+    } else {
+        typst_cache::share_inline_dependencies(dependencies)?
+    };
     Ok(RenderedInlineBatch {
         contents,
         sources,

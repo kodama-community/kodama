@@ -300,6 +300,155 @@ impl Drop for Site {
 
 #[test]
 #[ignore = "requires Typst on PATH"]
+fn inline_dependency_cache_grows_linearly() {
+    fn cache_totals(directory: &std::path::Path) -> (usize, usize) {
+        fn records(value: &serde_json::Value) -> usize {
+            match value {
+                serde_json::Value::Object(object) => {
+                    object
+                        .get("files")
+                        .and_then(serde_json::Value::as_object)
+                        .map_or(0, |files| files.len())
+                        + object.values().map(records).sum::<usize>()
+                }
+                serde_json::Value::Array(array) => array.iter().map(records).sum(),
+                _ => 0,
+            }
+        }
+        let (mut count, mut bytes) = (0, 0);
+        for entry in fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                let (nested_count, nested_bytes) = cache_totals(&path);
+                count += nested_count;
+                bytes += nested_bytes;
+            } else {
+                let data = fs::read(&path).unwrap();
+                bytes += data.len();
+                if let Ok(value) = serde_json::from_slice(&data) {
+                    count += records(&value);
+                }
+            }
+        }
+        (count, bytes)
+    }
+
+    let mut sizes = Vec::new();
+    for count in [32, 64] {
+        let site = Site::new();
+        for index in 0..count {
+            let slug = if index == 0 {
+                "index".to_string()
+            } else {
+                format!("p{index}")
+            };
+            site.write(
+                &format!("trees/_lib/value{index}.typ"),
+                &format!("#let message = [Value {index}]"),
+            );
+            site.write(&format!("trees/{slug}.md"), &format!("# Page {index}\n\n[message](/_lib/value{index}.typ#:shared)\n\n[#message](inline)"));
+        }
+        site.build();
+        let (records, bytes) = cache_totals(&site.0.join(".cache"));
+        assert_eq!(records, count, "each imported file should be recorded once");
+        sizes.push(bytes);
+        site.build();
+        assert_eq!(cache_totals(&site.0.join(".cache")).0, count);
+    }
+    assert!(
+        sizes[1] < sizes[0] * 3,
+        "doubling pages must not quadruple the cache: {sizes:?}"
+    );
+}
+
+#[test]
+#[ignore = "requires Typst on PATH"]
+fn inline_dependencies_survive_partial_rebuilds() {
+    let site = Site::new();
+    let first = "# First\n\n[message](/_lib/first.typ#:shared)\n\n[#message](inline)";
+    site.write("trees/index.md", first);
+    site.write(
+        "trees/other.md",
+        "# Other\n\n[message](/_lib/other.typ#:shared)\n\n[#message](inline)",
+    );
+    site.write("trees/_lib/first.typ", "#let message = [FIRST]");
+    site.write("trees/_lib/other.typ", "#let message = [BEFORE_OTHER]");
+    site.build();
+    let other_cache = site.0.join(".cache/entry/other.md.entry");
+    let original = fs::metadata(&other_cache).unwrap().modified().unwrap();
+
+    site.write("trees/index.md", &format!("{first}\n\nEdited first page."));
+    site.build();
+    site.build();
+    assert_eq!(
+        fs::metadata(&other_cache).unwrap().modified().unwrap(),
+        original
+    );
+    site.write(
+        "trees/_lib/other.typ",
+        "#let message = [AFTER_OTHER_CHANGED]",
+    );
+    site.build();
+    assert!(fs::read_to_string(site.0.join("publish/other.html"))
+        .unwrap()
+        .contains("AFTER_OTHER_CHANGED"));
+    assert!(fs::read_to_string(site.0.join("publish/index.html"))
+        .unwrap()
+        .contains("Edited first page."));
+
+    fs::remove_file(site.0.join(".cache/hash/typst/inline.dependencies")).unwrap();
+    site.build();
+    assert!(fs::read_to_string(site.0.join("publish/other.html"))
+        .unwrap()
+        .contains("AFTER_OTHER_CHANGED"));
+}
+
+#[test]
+#[ignore = "requires Typst on PATH"]
+fn stale_inline_entries_do_not_reuse_a_new_dependency_report() {
+    let site = Site::new();
+    site.write(
+        "trees/index.md",
+        "# Inline\n\n[message](/_lib/shared.typ#:shared)\n\n[#message](inline)",
+    );
+    site.write("trees/_lib/shared.typ", "#let message = [BEFORE_REPORT]");
+    site.build();
+    let path = site.0.join(".cache/entry/index.md.entry");
+    let stale = fs::read(&path).unwrap();
+    site.write(
+        "trees/_lib/shared.typ",
+        "#let message = [AFTER_REPORT_CHANGED]",
+    );
+    site.build();
+    // An interrupted build can leave old page entries beside a newer shared report.
+    fs::write(path, stale).unwrap();
+    site.build();
+    let page = fs::read_to_string(site.0.join("publish/index.html")).unwrap();
+    assert!(page.contains("AFTER_REPORT_CHANGED"));
+    assert!(!page.contains("BEFORE_REPORT"));
+}
+
+#[test]
+#[ignore = "requires Typst on PATH"]
+fn inline_check_does_not_write_shared_cache() {
+    let site = Site::new();
+    site.write(
+        "trees/index.md",
+        "# Check\n\n[message](/_lib/shared.typ#:shared)\n\n[#message](inline)",
+    );
+    site.write("trees/_lib/shared.typ", "#let message = [CHECK_ONLY]");
+    let output = site.run(&["check", "--strict"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!site.0.join(".cache").exists());
+    assert!(!site.0.join("publish").exists());
+}
+
+#[test]
+#[ignore = "requires Typst on PATH"]
 fn svg_errors_fail_build_and_are_retried() {
     let site = Site::new();
     site.write("trees/index.md", "# SVG\n\n![shape](shape.svg)\n");

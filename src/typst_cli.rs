@@ -18,9 +18,12 @@ pub fn write_to_inline_html<P: AsRef<Utf8Path>>(
     html_path: P,
 ) -> eyre::Result<String> {
     let root_dir = environment::trees_dir();
-    if typst_cache::artifact_is_current(typst_path.as_ref(), html_path.as_ref(), "html")? {
+    if let Some(dependencies) =
+        typst_cache::cached_artifact_dependencies(typst_path.as_ref(), html_path.as_ref(), "html")?
+    {
         let existed_html = fs::read_to_string(html_path.as_ref())?;
         if let Ok(existed_html) = html_to_body_content(&existed_html) {
+            typst_cache::record_dependencies(dependencies);
             if *crate::cli::build::verbose_skip() {
                 println!("Skip: {}", path_utils::pretty_path(typst_path.as_ref()));
             }
@@ -40,8 +43,9 @@ pub fn write_to_inline_html<P: AsRef<Utf8Path>>(
         typst_path.as_ref(),
         html_path.as_ref(),
         "html",
-        dependencies,
+        &dependencies,
     )?;
+    typst_cache::record_dependencies(dependencies);
     if *crate::cli::build::verbose() {
         println!(
             "Compiled to HTML: {}",
@@ -226,7 +230,11 @@ fn split_inline_segments(html: &str) -> eyre::Result<Vec<String>> {
 
 pub fn file_to_html(rel_path: &str, root_dir: &str) -> eyre::Result<String> {
     to_html_string(rel_path, root_dir)
-        .and_then(|(html, _)| html_to_body_content(&html))
+        .and_then(|(html, dependencies)| {
+            let body = html_to_body_content(&html)?;
+            typst_cache::record_dependencies(dependencies);
+            Ok(body)
+        })
         .wrap_err_with(|| eyre!("failed to extract html body from `{}`", rel_path))
 }
 
@@ -301,7 +309,7 @@ fn source_to_html(src: &str) -> eyre::Result<String> {
 
     let output = typst.wait_with_output()?;
     if output.status.success() {
-        dependencies.read()?;
+        typst_cache::record_dependencies(dependencies.read()?);
         Ok(String::from_utf8(output.stdout)?)
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -320,7 +328,7 @@ pub fn write_svg<P: AsRef<Utf8Path>>(typst_path: P, svg_path: P) -> eyre::Result
     let trees_dir = environment::trees_dir();
     let full_path = trees_dir.join(typst_path);
 
-    if typst_cache::artifact_is_current(typst_path, svg_path, "svg")? {
+    if typst_cache::cached_artifact_dependencies(typst_path, svg_path, "svg")?.is_some() {
         if *crate::cli::build::verbose_skip() {
             println!("Skip: {}", path_utils::pretty_path(typst_path));
         }
@@ -338,7 +346,7 @@ pub fn write_svg<P: AsRef<Utf8Path>>(typst_path: P, svg_path: P) -> eyre::Result
     let output = command.output()?;
 
     if output.status.success() {
-        typst_cache::save_artifact(typst_path, svg_path, "svg", dependencies.read()?)?;
+        typst_cache::save_artifact(typst_path, svg_path, "svg", &dependencies.read()?)?;
         if *crate::cli::build::verbose() {
             println!(
                 "Compiled to SVG: {}",
