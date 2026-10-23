@@ -693,7 +693,7 @@ nav#toc a.bullet {
 }
 
 /* typst html figure */
-figure:has(.typst-frame) {
+figure:has(.auto-frame) {
   overflow-x: auto;
   overflow-y: hidden;
 }
