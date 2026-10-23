@@ -28,6 +28,10 @@ impl Writer {
         let relative_path = format!("{}.html", section.slug()?);
         let filepath = crate::environment::output_path(&relative_path);
 
+        if std::fs::read(&filepath).is_ok_and(|existing| existing == html.as_bytes()) {
+            return Ok(());
+        }
+
         if let Err(err) = std::fs::write(&filepath, html) {
             color_print::ceprintln!("<r>{:?}</>", err);
         } else if *crate::cli::build::verbose() {
