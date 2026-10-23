@@ -86,38 +86,22 @@ pub(crate) fn take_typst_styles(html: &str, styles: &mut Vec<String>) -> String 
         .into_owned()
 }
 
-/// Custom element tag used to delimit each inline formula within a single batched
-/// typst compilation. Kept deliberately generic (not bound to "kodama") since it
-/// is purely an internal output delimiter, never rendered to end users.
-pub const INLINE_SEGMENT_TAG: &str = "segment";
+/// An owned delimiter, independent of Typst's generated paragraph structure.
+pub const INLINE_SEGMENT_TAG: &str = "kodama-inline-segment";
 
 pub fn source_to_inline_svg(src: &str) -> eyre::Result<String> {
-    let kodama_header = include_str!("include/kodama.typ");
-    let svg = source_to_html(format!("{}\n#show: kodama\n{}", kodama_header, src).as_str())?;
-
-    let start_pos = svg
-        .find("<p>")
-        .map(|pos| pos + 3)
-        .ok_or_else(|| eyre!("missing `<p>` tag in typst inline svg output"))?;
-    let end_pos = svg
-        .rfind("</p>")
-        .ok_or_else(|| eyre!("missing `</p>` tag in typst inline svg output"))?;
-    if end_pos < start_pos {
-        return Err(eyre!(
-            "malformed paragraph range in typst inline svg output"
-        ));
-    }
-    let content = &svg[start_pos..end_pos];
-
+    let content = source_to_inline_svgs(&[src.to_string()], "")?
+        .pop()
+        .ok_or_else(|| eyre!("missing inline Typst segment"))?;
     Ok(format!(
         "\n{}\n",
-        html_flake::html_inline_typst_span(content)
+        html_flake::html_inline_typst_span(&content)
     ))
 }
 
 /// Compile several inline formulas in a single typst invocation.
 ///
-/// Each formula is wrapped in a `<segment>` element so its output can be split
+/// Each formula is wrapped in an owned element so its output can be split
 /// back out afterwards. On failure, the caller is expected to fall back to
 /// [`source_to_inline_svg`] per formula for precise error reporting.
 pub fn source_to_inline_svgs(sources: &[String], shareds: &str) -> eyre::Result<Vec<String>> {
@@ -145,7 +129,7 @@ pub fn source_to_inline_svgs(sources: &[String], shareds: &str) -> eyre::Result<
 ///
 /// Each group carries its own `shareds` header (import lines). Groups are
 /// wrapped in distinct scoped functions so their imports never leak into one
-/// another, and every formula is delimited by a `<segment>` element so the
+/// another, and every formula is delimited by an owned element so the
 /// output can be split back out in index order. On failure the caller falls
 /// back to [`source_to_inline_svgs`] per group.
 pub fn source_to_inline_svgs_grouped(
@@ -204,20 +188,34 @@ fn element_content<'a>(html: &'a str, name: &str) -> Option<&'a str> {
 fn split_inline_segments(html: &str) -> eyre::Result<Vec<String>> {
     let body = extract_body_content(html)
         .ok_or_else(|| eyre!("missing `<body>` tags in typst inline svg output"))?;
-    let open = format!("<{INLINE_SEGMENT_TAG}>");
-    let close = format!("</{INLINE_SEGMENT_TAG}>");
-
+    static TAGS: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(&format!(
+            r#"<(?<close>/)?{INLINE_SEGMENT_TAG}(?:\s+(?:[^"'<>]|"[^"]*"|'[^']*')*)?\s*>"#
+        ))
+        .unwrap()
+    });
     let mut segments = Vec::new();
-    let mut rest = body;
-    while let Some(start) = rest.find(&open) {
-        let after = &rest[start + open.len()..];
-        let Some(end) = after.find(&close) else {
-            return Err(eyre!(
-                "malformed typst inline svg output: missing `{close}`"
-            ));
-        };
-        segments.push(after[..end].to_string());
-        rest = &after[end + close.len()..];
+    let mut depth = 0;
+    let mut start = 0;
+    for capture in TAGS.captures_iter(body) {
+        let tag = capture.get(0).unwrap();
+        if capture.name("close").is_some() {
+            if depth == 0 {
+                return Err(eyre!("unexpected closing inline Typst segment"));
+            }
+            depth -= 1;
+            if depth == 0 {
+                segments.push(body[start..tag.start()].to_string());
+            }
+        } else {
+            if depth == 0 {
+                start = tag.end();
+            }
+            depth += 1;
+        }
+    }
+    if depth != 0 {
+        return Err(eyre!("unclosed inline Typst segment"));
     }
     Ok(segments)
 }
@@ -398,8 +396,8 @@ mod tests {
     fn test_split_inline_segments_returns_each_segment_body() {
         let html = concat!(
             "<html><head><style>.x{}</style></head><body>",
-            "<segment><math>a</math></segment>",
-            "<segment><svg>c</svg></segment>",
+            "<kodama-inline-segment><math>a</math></kodama-inline-segment>",
+            "<kodama-inline-segment><svg>c</svg></kodama-inline-segment>",
             "</body></html>",
         );
         let segments = super::split_inline_segments(html).unwrap();
@@ -408,7 +406,7 @@ mod tests {
 
     #[test]
     fn test_split_inline_segments_ignores_head_content() {
-        let html = "<html><head><segment>fake</segment></head><body></body></html>";
+        let html = "<html><head><kodama-inline-segment>fake</kodama-inline-segment></head><body></body></html>";
         let segments = super::split_inline_segments(html).unwrap();
         assert!(segments.is_empty());
     }
@@ -420,8 +418,15 @@ mod tests {
 
     #[test]
     fn test_split_inline_segments_unclosed_segment_is_error() {
-        let html = "<html><body><segment>x</body></html>";
+        let html = "<html><body><kodama-inline-segment>x</body></html>";
         assert!(super::split_inline_segments(html).is_err());
+    }
+
+    #[test]
+    fn test_inline_segments_accept_attributes_and_preserve_nested_content() {
+        let content = "<span>Before</span><kodama-inline-segment>Nested</kodama-inline-segment><span>After</span>";
+        let html = format!("<html><body><kodama-inline-segment data-note='a > b'>{content}</kodama-inline-segment></body></html>");
+        assert_eq!(super::split_inline_segments(&html).unwrap(), [content]);
     }
 
     #[test]
