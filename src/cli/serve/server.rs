@@ -36,8 +36,10 @@ impl BuiltinServer {
     /// thread. The banner is printed later via [`BuiltinServer::banner`] so it
     /// appears after the watch setup messages.
     pub fn spawn() -> eyre::Result<Self> {
-        let output_dir = environment::output_dir();
-        let listener = bind_listener()?;
+        Self::spawn_with_listener(bind_listener()?, environment::output_dir())
+    }
+
+    fn spawn_with_listener(listener: TcpListener, output_dir: Utf8PathBuf) -> eyre::Result<Self> {
         let addr = listener.local_addr()?;
 
         let stop = Arc::new(AtomicBool::new(false));
@@ -66,6 +68,8 @@ impl BuiltinServer {
     pub fn kill(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
         if let Some(thread) = self.thread.take() {
+            // Wake the blocking accept so shutdown does not wait for a request.
+            let _ = TcpStream::connect(self.addr);
             let _ = thread.join();
         }
     }
@@ -85,16 +89,16 @@ fn bind_listener() -> eyre::Result<TcpListener> {
 }
 
 fn accept_loop(listener: TcpListener, output_dir: Utf8PathBuf, stop: Arc<AtomicBool>) {
-    let _ = listener.set_nonblocking(true);
     while !stop.load(Ordering::SeqCst) {
         match listener.accept() {
             Ok((stream, _)) => {
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
                 let dir = output_dir.clone();
                 std::thread::spawn(move || handle_connection(stream, dir.as_path()));
             }
-            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            }
+            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(_) => break,
         }
     }
@@ -308,7 +312,7 @@ fn mime_from_ext(ext: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{fs, sync::mpsc, time::Duration};
 
     use super::*;
 
@@ -330,6 +334,77 @@ mod tests {
         let file = root.join(relative);
         fs::create_dir_all(file.parent().unwrap()).unwrap();
         fs::write(&file, content).unwrap();
+    }
+
+    fn start_server(root: &Utf8Path) -> BuiltinServer {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        BuiltinServer::spawn_with_listener(listener, root.to_path_buf()).unwrap()
+    }
+
+    fn tcp_request(addr: SocketAddr, method: &str, target: &str) -> String {
+        let timeout = Duration::from_secs(2);
+        let mut stream = TcpStream::connect_timeout(&addr, timeout).unwrap();
+        stream.set_read_timeout(Some(timeout)).unwrap();
+        stream.set_write_timeout(Some(timeout)).unwrap();
+        write!(
+            stream,
+            "{method} {target} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+        )
+        .unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        response
+    }
+
+    #[test]
+    fn test_server_handles_sequential_tcp_requests() {
+        let root = serve_dir();
+        write(&root, "index.html", b"<h1>home</h1>");
+        let mut server = start_server(&root);
+
+        for method in ["GET", "HEAD", "GET"] {
+            let response = tcp_request(server.addr, method, "/");
+            let (headers, body) = response.split_once("\r\n\r\n").unwrap();
+            assert!(headers.starts_with("HTTP/1.1 200 OK\r\n"));
+            assert!(headers.contains("Content-Length: 13\r\n"));
+            assert_eq!(
+                body,
+                if method == "HEAD" {
+                    ""
+                } else {
+                    "<h1>home</h1>"
+                }
+            );
+        }
+
+        server.kill();
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_server_stops_before_and_after_serving_requests() {
+        let root = serve_dir();
+        write(&root, "index.html", b"home");
+
+        for warm_up in [false, true] {
+            let mut server = start_server(&root);
+            if warm_up {
+                assert!(tcp_request(server.addr, "GET", "/").ends_with("home"));
+            }
+            let (stopped, receiver) = mpsc::channel();
+            let shutdown = std::thread::spawn(move || {
+                server.kill();
+                server.kill();
+                assert!(server.thread.is_none());
+                stopped.send(()).unwrap();
+            });
+            receiver
+                .recv_timeout(Duration::from_secs(2))
+                .expect("server did not stop while waiting for a connection");
+            shutdown.join().unwrap();
+        }
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
