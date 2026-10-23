@@ -68,6 +68,7 @@ impl Diagnostic {
 
 pub fn check(command: &CheckCommand) -> eyre::Result<()> {
     environment::init_environment(Utf8Path::new(&command.config), BuildMode::Check)?;
+    crate::typst_cache::begin_build();
 
     let trees_dir = environment::trees_dir();
     let workspace = compiler::all_trees_source(trees_dir.as_path())
@@ -171,7 +172,9 @@ fn parse_shallows_no_cache(
     }
 
     // Compile inline formulas (reporting errors) and resolve placeholders.
-    let results = inline_typst::compile_inline_batch().unwrap_or_default();
+    let results = inline_typst::compile_inline_batch()
+        .map(|batch| batch.contents)
+        .unwrap_or_default();
     for section in shallows.values_mut() {
         inline_typst::resolve_inline_typst_section(section, &results);
     }

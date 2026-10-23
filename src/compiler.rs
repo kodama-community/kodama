@@ -39,6 +39,7 @@ use crate::{
     entry::HTMLMetaData,
     environment::{self, SourceMeta},
     slug::{SectionKind, Slug},
+    typst_cache::{self, Dependencies},
 };
 
 use self::{
@@ -54,6 +55,7 @@ pub use source_scan::{all_trees_source, sync_typst_svg_assets, Workspace};
 pub type DirtySet = HashSet<Utf8PathBuf>;
 pub type UnresolvedSections = HashMap<Slug, UnresolvedSection>;
 pub type SourceSectionsIndex = HashMap<Slug, Vec<Slug>>;
+pub type SourceDependencies = HashMap<Slug, Dependencies>;
 pub type ParsedSections = Vec<(Slug, UnresolvedSection)>;
 
 #[derive(Debug, Clone, Copy)]
@@ -79,6 +81,8 @@ pub(super) struct CachedSourceEntry {
     /// entries, which are always reparsed.
     #[serde(default)]
     pub source_meta: Option<SourceMeta>,
+    #[serde(default)]
+    pub typst_dependencies: Dependencies,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -87,11 +91,12 @@ pub(super) struct CachedSection {
     pub section: UnresolvedSection,
 }
 
-/// A freshly parsed source's entry-cache path plus the (mtime, size) snapshot
-/// captured at parse time, used to refresh the cache.
+/// The source snapshot and actual Typst inputs behind an entry cache.
 pub(super) struct SourceCache {
     pub entry_path: Utf8PathBuf,
     pub source_meta: Option<SourceMeta>,
+    pub typst_dependencies: Dependencies,
+    pub needs_write: bool,
 }
 
 pub fn compile(
@@ -218,10 +223,10 @@ pub(super) fn collect_shallows(
 pub(super) fn collect_shallows_with_sources(
     workspace: &Workspace,
     dirty_paths: Option<&DirtySet>,
-) -> eyre::Result<(UnresolvedSections, SourceSectionsIndex)> {
+) -> eyre::Result<(UnresolvedSections, SourceSectionsIndex, SourceDependencies)> {
     inline_typst::begin_inline_batch();
 
-    let mut pending: Vec<(Slug, ParsedSections, Option<SourceCache>)> = Vec::new();
+    let mut pending: Vec<(Slug, ParsedSections, SourceCache)> = Vec::new();
     for (&source_slug, &kind) in &workspace.slug_exts {
         let (sections, cache) = load_shallow_sections(source_slug, kind, dirty_paths)?;
         pending.push((source_slug, sections, cache));
@@ -230,17 +235,27 @@ pub(super) fn collect_shallows_with_sources(
     // Inline typst formulas are compiled in a single batched invocation once
     // every source has been parsed; only then can the placeholders be resolved
     // and the entry caches written.
-    let results = inline_typst::compile_inline_batch()?;
+    let batch = inline_typst::compile_inline_batch()?;
 
     let mut shallows = HashMap::new();
     let mut source_sections = HashMap::new();
-    for (source_slug, mut sections, cache) in pending {
+    let mut source_dependencies = HashMap::new();
+    for (source_slug, mut sections, mut cache) in pending {
         for (_, section) in &mut sections {
-            inline_typst::resolve_inline_typst_section(section, &results);
+            inline_typst::resolve_inline_typst_section(section, &batch.contents);
         }
-        if let Some(cache) = cache {
-            write_entry_cache(cache.entry_path.as_path(), &sections, cache.source_meta)?;
+        if cache.needs_write {
+            if let Some(dependencies) = batch.dependencies_for(source_slug) {
+                cache.typst_dependencies.merge(dependencies);
+            }
+            write_entry_cache(
+                cache.entry_path.as_path(),
+                &sections,
+                cache.source_meta,
+                &cache.typst_dependencies,
+            )?;
         }
+        source_dependencies.insert(source_slug, cache.typst_dependencies);
 
         let produced_slugs: Vec<Slug> = sections.iter().map(|(slug, _)| *slug).collect();
         for (slug, shallow) in sections {
@@ -255,7 +270,7 @@ pub(super) fn collect_shallows_with_sources(
         source_sections.insert(source_slug, produced_slugs);
     }
 
-    Ok((shallows, source_sections))
+    Ok((shallows, source_sections, source_dependencies))
 }
 
 /// Parse a source file's sections.
@@ -291,9 +306,11 @@ pub(super) fn write_entry_cache(
     entry_path: &Utf8Path,
     sections: &[(Slug, UnresolvedSection)],
     source_meta: Option<SourceMeta>,
+    dependencies: &Dependencies,
 ) -> eyre::Result<()> {
     let serialized = serde_json::to_string(&CachedSourceEntry {
         source_meta,
+        typst_dependencies: dependencies.clone(),
         sections: sections
             .iter()
             .map(|(slug, section)| CachedSection {
@@ -308,7 +325,9 @@ pub(super) fn write_entry_cache(
     Ok(())
 }
 
-fn read_entry_cache(entry_path: &Utf8Path) -> eyre::Result<(Option<SourceMeta>, ParsedSections)> {
+fn read_entry_cache(
+    entry_path: &Utf8Path,
+) -> eyre::Result<(Option<SourceMeta>, Dependencies, ParsedSections)> {
     let entry_file = BufReader::new(
         File::open(entry_path)
             .wrap_err_with(|| eyre!("failed to open entry file at `{}`", entry_path))?,
@@ -318,6 +337,7 @@ fn read_entry_cache(entry_path: &Utf8Path) -> eyre::Result<(Option<SourceMeta>, 
         .wrap_err_with(|| eyre!("failed to deserialize entry file at `{}`", entry_path))?;
     Ok((
         cached.source_meta,
+        cached.typst_dependencies,
         cached
             .sections
             .into_iter()
@@ -330,7 +350,7 @@ fn load_shallow_sections(
     source_slug: Slug,
     kind: SectionKind,
     dirty_paths: Option<&DirtySet>,
-) -> eyre::Result<(ParsedSections, Option<SourceCache>)> {
+) -> eyre::Result<(ParsedSections, SourceCache)> {
     let relative_path = source_relative_path(source_slug, kind);
     let entry_path = environment::entry_file_path(&relative_path);
 
@@ -342,22 +362,36 @@ fn load_shallow_sections(
     if !must_reparse && source_meta.is_some() {
         // Trust the cached entry when the source's (mtime, size) is unchanged.
         // An unstat'able source is never trusted.
-        if let Ok((cached_meta, mut sections)) = read_entry_cache(entry_path.as_path()) {
-            if cached_meta == source_meta {
+        if let Ok((cached_meta, dependencies, mut sections)) =
+            read_entry_cache(entry_path.as_path())
+        {
+            if cached_meta == source_meta && dependencies.is_current()? {
+                typst_cache::record_dependencies(&dependencies);
                 for (_, section) in &mut sections {
                     section.metadata.compute_textual_attrs();
                 }
-                return Ok((sections, None));
+                return Ok((
+                    sections,
+                    SourceCache {
+                        entry_path,
+                        source_meta,
+                        typst_dependencies: dependencies,
+                        needs_write: false,
+                    },
+                ));
             }
         }
     }
 
-    let sections = parse_source_sections(source_slug, kind)?;
+    let (sections, dependencies) =
+        typst_cache::capture_dependencies(|| parse_source_sections(source_slug, kind))?;
     Ok((
         sections,
-        Some(SourceCache {
+        SourceCache {
             entry_path,
             source_meta,
-        }),
+            typst_dependencies: dependencies,
+            needs_write: true,
+        },
     ))
 }

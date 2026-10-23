@@ -9,6 +9,7 @@ use eyre::{eyre, WrapErr};
 use crate::{
     environment,
     slug::{SectionKind, Slug},
+    typst_cache,
 };
 
 use super::section::UnresolvedSection;
@@ -17,7 +18,8 @@ use super::{
     incremental::{dirty_source_slugs, source_relative_path},
     inline_typst, parse_source_sections,
     stale::cleanup_stale_slug_artifacts,
-    write_entry_cache, CompileOutputs, DirtySet, ParsedSections, SourceCache, Workspace,
+    write_entry_cache, CompileOutputs, DirtySet, ParsedSections, SourceCache, SourceDependencies,
+    Workspace,
 };
 
 #[derive(Default)]
@@ -25,6 +27,7 @@ pub struct ServeCompileSession {
     initialized: bool,
     shallows: HashMap<Slug, UnresolvedSection>,
     source_sections: HashMap<Slug, Vec<Slug>>,
+    source_dependencies: SourceDependencies,
 }
 
 impl ServeCompileSession {
@@ -39,9 +42,11 @@ impl ServeCompileSession {
     ) -> eyre::Result<()> {
         let stale_slugs = cleanup_stale_slug_artifacts(&workspace)
             .wrap_err("failed to clean stale slug artifacts")?;
-        let (shallows, source_sections) = super::collect_shallows_with_sources(&workspace, None)?;
+        let (shallows, source_sections, dependencies) =
+            super::collect_shallows_with_sources(&workspace, None)?;
         self.shallows = shallows;
         self.source_sections = source_sections;
+        self.source_dependencies = dependencies;
         self.initialized = true;
         compile_from_shallows(&workspace, &self.shallows, None, outputs, stale_slugs)
     }
@@ -62,6 +67,7 @@ impl ServeCompileSession {
             .filter(|source_slug| !workspace.slug_exts.contains_key(source_slug))
             .collect();
         for source_slug in removed_sources {
+            self.source_dependencies.remove(&source_slug);
             if let Some(slugs) = self.source_sections.remove(&source_slug) {
                 for slug in slugs {
                     self.shallows.remove(&slug);
@@ -73,7 +79,11 @@ impl ServeCompileSession {
         let mut parse_targets: HashSet<Slug> = dirty_slugs.clone();
 
         for (&slug, &kind) in &workspace.slug_exts {
-            if self.needs_refresh(slug, kind) {
+            let dependencies_current = match self.source_dependencies.get(&slug) {
+                Some(dependencies) => dependencies.is_current()?,
+                None => false,
+            };
+            if self.needs_refresh(slug, kind) || !dependencies_current {
                 parse_targets.insert(slug);
             }
         }
@@ -88,7 +98,8 @@ impl ServeCompileSession {
             };
             let relative_path = source_relative_path(slug, kind);
             let entry_path = environment::entry_file_path(relative_path.as_path());
-            let sections = parse_source_sections(slug, kind)?;
+            let (sections, dependencies) =
+                typst_cache::capture_dependencies(|| parse_source_sections(slug, kind))?;
             let source_meta = environment::relative_source_meta(&relative_path);
             parsed.push((
                 slug,
@@ -96,18 +107,30 @@ impl ServeCompileSession {
                 SourceCache {
                     entry_path,
                     source_meta,
+                    typst_dependencies: dependencies,
+                    needs_write: true,
                 },
             ));
         }
 
         // Compile all freshly parsed inline formulas in one batch, then resolve
         // their placeholders and write the entry caches.
-        let results = inline_typst::compile_inline_batch()?;
-        for (source_slug, mut sections, cache) in parsed {
+        let batch = inline_typst::compile_inline_batch()?;
+        for (source_slug, mut sections, mut cache) in parsed {
             for (_, section) in &mut sections {
-                inline_typst::resolve_inline_typst_section(section, &results);
+                inline_typst::resolve_inline_typst_section(section, &batch.contents);
             }
-            write_entry_cache(cache.entry_path.as_path(), &sections, cache.source_meta)?;
+            if let Some(dependencies) = batch.dependencies_for(source_slug) {
+                cache.typst_dependencies.merge(dependencies);
+            }
+            write_entry_cache(
+                cache.entry_path.as_path(),
+                &sections,
+                cache.source_meta,
+                &cache.typst_dependencies,
+            )?;
+            self.source_dependencies
+                .insert(source_slug, cache.typst_dependencies);
 
             if let Some(previous_slugs) = self.source_sections.remove(&source_slug) {
                 for previous_slug in previous_slugs {
@@ -150,6 +173,12 @@ impl ServeCompileSession {
     }
 
     pub fn rewrite_all_from_memory(&mut self, outputs: CompileOutputs) -> eyre::Result<()> {
+        for dependencies in self.source_dependencies.values() {
+            if !dependencies.is_current()? {
+                let workspace = super::all_trees_source(&environment::trees_dir())?;
+                return self.compile_full(workspace, outputs);
+            }
+        }
         // Global/template/theme changes can require re-emitting all pages,
         // but they don't require reparsing source trees.
         let workspace = Workspace {

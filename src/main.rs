@@ -20,6 +20,7 @@ mod recorder;
 mod slug;
 #[cfg(test)]
 mod test_io;
+mod typst_cache;
 mod typst_cli;
 
 use clap::{

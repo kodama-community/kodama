@@ -13,8 +13,6 @@ use crate::{
     slug::{SectionKind, Slug, SourceRole},
 };
 
-use super::DirtySet;
-
 #[derive(Debug)]
 pub struct Workspace {
     pub slug_exts: HashMap<Slug, SectionKind>,
@@ -119,69 +117,51 @@ fn all_trees_source_inner(trees_dir: &Utf8Path) -> eyre::Result<Workspace> {
     Ok(Workspace { slug_exts })
 }
 
-pub fn sync_typst_svg_assets(
-    trees_dir: &Utf8Path,
-    dirty_paths: Option<&DirtySet>,
-) -> eyre::Result<()> {
+pub fn sync_typst_svg_assets(trees_dir: &Utf8Path) -> eyre::Result<()> {
     if !trees_dir.exists() {
         return Ok(());
     }
 
-    if let Some(dirty_paths) = dirty_paths {
-        for relative in dirty_paths {
-            if !relative
+    // Check every SVG's recorded dependencies, including imports and data files.
+    // Unchanged artifacts are skipped by the renderer cache.
+    for entry in WalkDir::new(trees_dir)
+        .follow_links(true)
+        .into_iter()
+        .filter_entry(|e| {
+            Utf8Path::from_path(e.path()).is_some_and(|p| p.is_file() || !should_ignore_dir(p))
+        })
+    {
+        let std_path = match entry {
+            Ok(entry) => entry.into_path(),
+            Err(err) => {
+                color_print::ceprintln!(
+                    "<y>Warning: failed to read path while scanning typ assets: {}</>",
+                    err
+                );
+                continue;
+            }
+        };
+        let path = match Utf8PathBuf::from_path_buf(std_path) {
+            Ok(path) => path,
+            Err(non_utf8) => {
+                color_print::ceprintln!(
+                    "<y>Warning: skipping non-UTF-8 path `{}`.</>",
+                    non_utf8.display()
+                );
+                continue;
+            }
+        };
+        if !path.is_file()
+            || !path
                 .extension()
                 .is_some_and(|e| matches!(environment::classify_source(e), SourceRole::TypstLib))
-                || is_under_ignored_dir(relative.as_path())
-            {
-                continue;
-            }
-            let full_path = trees_dir.join(relative);
-            if !full_path.is_file() {
-                continue;
-            }
-            compile_typst_svg(trees_dir, relative.as_path())?;
-        }
-    } else {
-        for entry in WalkDir::new(trees_dir)
-            .follow_links(true)
-            .into_iter()
-            .filter_entry(|e| {
-                Utf8Path::from_path(e.path()).is_some_and(|p| p.is_file() || !should_ignore_dir(p))
-            })
         {
-            let std_path = match entry {
-                Ok(entry) => entry.into_path(),
-                Err(err) => {
-                    color_print::ceprintln!(
-                        "<y>Warning: failed to read path while scanning typ assets: {}</>",
-                        err
-                    );
-                    continue;
-                }
-            };
-            let path = match Utf8PathBuf::from_path_buf(std_path) {
-                Ok(path) => path,
-                Err(non_utf8) => {
-                    color_print::ceprintln!(
-                        "<y>Warning: skipping non-UTF-8 path `{}`.</>",
-                        non_utf8.display()
-                    );
-                    continue;
-                }
-            };
-            if !path.is_file()
-                || !path.extension().is_some_and(|e| {
-                    matches!(environment::classify_source(e), SourceRole::TypstLib)
-                })
-            {
-                continue;
-            }
-            let Ok(relative) = path.strip_prefix(trees_dir) else {
-                continue;
-            };
-            compile_typst_svg(trees_dir, relative)?;
+            continue;
         }
+        let Ok(relative) = path.strip_prefix(trees_dir) else {
+            continue;
+        };
+        compile_typst_svg(trees_dir, relative)?;
     }
 
     Ok(())
@@ -192,17 +172,6 @@ fn compile_typst_svg(trees_dir: &Utf8Path, relative: &Utf8Path) -> eyre::Result<
     let svg_path = environment::output_path(&svg_url);
     crate::typst_cli::write_svg(relative, &svg_path)
         .wrap_err_with(|| eyre!("failed to compile Typst SVG `{}`", trees_dir.join(relative)))
-}
-
-fn is_under_ignored_dir(path: &Utf8Path) -> bool {
-    let mut parent = path.parent();
-    while let Some(dir) = parent {
-        if should_ignore_dir(dir) {
-            return true;
-        }
-        parent = dir.parent();
-    }
-    false
 }
 
 #[cfg(test)]
@@ -237,14 +206,6 @@ mod tests {
     #[test]
     fn test_sync_typst_svg_assets_ignores_missing_tree_root() {
         let missing = crate::test_io::case_dir("missing-typ-assets");
-        assert!(sync_typst_svg_assets(missing.as_path(), None).is_ok());
-    }
-
-    #[test]
-    fn test_is_under_ignored_dir_detects_internal_helper_dirs() {
-        assert!(is_under_ignored_dir(Utf8Path::new("_lib/kodama.typ")));
-        assert!(is_under_ignored_dir(Utf8Path::new("docs/.cache/a.typ")));
-        assert!(!is_under_ignored_dir(Utf8Path::new("docs/math/a.typ")));
-        assert!(!is_under_ignored_dir(Utf8Path::new("a.typ")));
+        assert!(sync_typst_svg_assets(missing.as_path()).is_ok());
     }
 }

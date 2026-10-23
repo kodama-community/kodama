@@ -9,15 +9,16 @@ use eyre::{eyre, WrapErr};
 use regex_lite::Regex;
 
 use crate::{
-    environment::{self, file_meta_updated},
-    html_flake, path_utils,
+    environment, html_flake, path_utils,
+    typst_cache::{self, Dependencies, DependencyFile},
 };
 
 pub fn write_to_inline_html<P: AsRef<Utf8Path>>(
     typst_path: P,
     html_path: P,
 ) -> eyre::Result<String> {
-    if !file_meta_updated(typst_path.as_ref())? && html_path.as_ref().exists() {
+    let root_dir = environment::trees_dir();
+    if typst_cache::artifact_is_current(typst_path.as_ref(), html_path.as_ref(), "html")? {
         let existed_html = fs::read_to_string(html_path.as_ref())?;
         if let Ok(existed_html) = html_to_body_content(&existed_html) {
             if *crate::cli::build::verbose_skip() {
@@ -31,13 +32,16 @@ pub fn write_to_inline_html<P: AsRef<Utf8Path>>(
         );
     }
 
-    let root_dir = environment::trees_dir();
-    let html = to_html_string(typst_path.as_ref(), &root_dir).inspect_err(|_| {
-        let _ = fs::remove_file(environment::hash_file_path(typst_path.as_ref()));
-    })?;
+    let (html, dependencies) = to_html_string(typst_path.as_ref(), &root_dir)?;
     let html_body = html_to_body_content(&html)?;
 
     fs::write(html_path.as_ref(), html)?;
+    typst_cache::save_artifact(
+        typst_path.as_ref(),
+        html_path.as_ref(),
+        "html",
+        dependencies,
+    )?;
     if *crate::cli::build::verbose() {
         println!(
             "Compiled to HTML: {}",
@@ -222,11 +226,14 @@ fn split_inline_segments(html: &str) -> eyre::Result<Vec<String>> {
 
 pub fn file_to_html(rel_path: &str, root_dir: &str) -> eyre::Result<String> {
     to_html_string(rel_path, root_dir)
-        .and_then(|s| html_to_body_content(&s))
+        .and_then(|(html, _)| html_to_body_content(&html))
         .wrap_err_with(|| eyre!("failed to extract html body from `{}`", rel_path))
 }
 
-fn to_html_string<P: AsRef<Utf8Path>>(rel_path: P, root_dir: P) -> eyre::Result<String> {
+fn to_html_string<P: AsRef<Utf8Path>>(
+    rel_path: P,
+    root_dir: P,
+) -> eyre::Result<(String, Dependencies)> {
     let root_dir = root_dir.as_ref();
     let rel_path = rel_path.as_ref();
     let full_path = root_dir.join(rel_path);
@@ -239,7 +246,8 @@ fn to_html_string<P: AsRef<Utf8Path>>(rel_path: P, root_dir: P) -> eyre::Result<
         ));
     }
 
-    let output = Command::new("typst")
+    let mut command = Command::new("typst");
+    command
         .arg("c")
         .arg("-f=html")
         .arg("--features=html")
@@ -248,11 +256,12 @@ fn to_html_string<P: AsRef<Utf8Path>>(rel_path: P, root_dir: P) -> eyre::Result<
         .args(["--input", &format!("random={}", fastrand::i64(0..))])
         .arg(full_path)
         .arg("-")
-        .stdout(std::process::Stdio::piped())
-        .output()?;
+        .stdout(std::process::Stdio::piped());
+    let dependencies = DependencyFile::new(&mut command, false)?;
+    let output = command.output()?;
 
     if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        Ok((String::from_utf8(output.stdout)?, dependencies.read()?))
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         failed_in_file(concat!(file!(), '#', line!()), rel_path.as_str(), stderr);
@@ -266,7 +275,8 @@ fn to_html_string<P: AsRef<Utf8Path>>(rel_path: P, root_dir: P) -> eyre::Result<
 fn source_to_html(src: &str) -> eyre::Result<String> {
     let root_dir = environment::trees_dir();
 
-    let mut typst = Command::new("typst")
+    let mut command = Command::new("typst");
+    command
         .arg("c")
         .arg("-f=html")
         .arg("--features=html")
@@ -275,8 +285,9 @@ fn source_to_html(src: &str) -> eyre::Result<String> {
         .arg("-")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()?;
+        .stderr(std::process::Stdio::piped());
+    let dependencies = DependencyFile::new(&mut command, true)?;
+    let mut typst = command.spawn()?;
 
     {
         let mut stdin = typst
@@ -290,7 +301,8 @@ fn source_to_html(src: &str) -> eyre::Result<String> {
 
     let output = typst.wait_with_output()?;
     if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        dependencies.read()?;
+        Ok(String::from_utf8(output.stdout)?)
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         color_print::ceprintln!(
@@ -305,25 +317,28 @@ fn source_to_html(src: &str) -> eyre::Result<String> {
 pub fn write_svg<P: AsRef<Utf8Path>>(typst_path: P, svg_path: P) -> eyre::Result<()> {
     let typst_path = typst_path.as_ref();
     let svg_path = svg_path.as_ref();
+    let trees_dir = environment::trees_dir();
+    let full_path = trees_dir.join(typst_path);
 
-    if !file_meta_updated(typst_path)? && svg_path.exists() {
+    if typst_cache::artifact_is_current(typst_path, svg_path, "svg")? {
         if *crate::cli::build::verbose_skip() {
             println!("Skip: {}", path_utils::pretty_path(typst_path));
         }
         return Ok(());
     }
 
-    let trees_dir = environment::trees_dir();
-    let full_path = trees_dir.join(typst_path);
-    let output = Command::new("typst")
+    let mut command = Command::new("typst");
+    command
         .arg("c")
         .arg("-f=svg")
         .arg(format!("--root={}", trees_dir))
         .arg(&full_path)
-        .arg(svg_path)
-        .output()?;
+        .arg(svg_path);
+    let dependencies = DependencyFile::new(&mut command, false)?;
+    let output = command.output()?;
 
     if output.status.success() {
+        typst_cache::save_artifact(typst_path, svg_path, "svg", dependencies.read()?)?;
         if *crate::cli::build::verbose() {
             println!(
                 "Compiled to SVG: {}",
@@ -333,7 +348,6 @@ pub fn write_svg<P: AsRef<Utf8Path>>(typst_path: P, svg_path: P) -> eyre::Result
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         failed_in_file(concat!(file!(), '#', line!()), full_path.as_str(), stderr);
-        let _ = fs::remove_file(environment::hash_file_path(typst_path));
         return Err(eyre!("typst SVG compilation failed for `{}`", typst_path));
     }
     Ok(())

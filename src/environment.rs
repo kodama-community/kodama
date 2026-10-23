@@ -29,7 +29,7 @@ pub use config_access::{
     suffix_for_kind, theme_lock, theme_paths, toc_max_width, trees_dir, trees_dir_without_root,
     typst_root_dir, typst_suffix,
 };
-pub use hashing::{file_meta_updated, relative_source_meta, SourceMeta};
+pub use hashing::{relative_source_meta, source_meta_of, SourceMeta};
 pub use imports::{import_fonts_html, import_math_html, import_meta_html, import_style_html};
 pub use paths::{
     create_parent_dirs, entry_dir, entry_file_path, full_html_url, full_url, hash_dir,

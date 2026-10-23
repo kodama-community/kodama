@@ -5,7 +5,7 @@ Kodama is a single-command static site generator for interlinked notes. It reads
 ## Prerequisites
 
 - The `kodama` binary.
-- Typst installed and available on `PATH` when using `.typst` sections or Typst rendering features from Markdown.
+- Typst 0.15 or newer installed and available on `PATH` when using `.typst` sections or Typst rendering features from Markdown.
 - A local static file server for `kodama serve`. The default serve command uses `miniserve`. Not needed when running `kodama serve --no-server`.
 
 ## Create a Site

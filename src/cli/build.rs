@@ -95,6 +95,7 @@ pub fn build_with_dirty(
     dirty_paths: Option<&DirtySet>,
 ) -> eyre::Result<()> {
     environment::init_environment(Utf8Path::new(config), mode)?;
+    crate::typst_cache::begin_build();
     environment::ensure_cache_version()?;
     _ = VERBOSE.set(options.verbose);
     _ = VERBOSE_SKIP.set(options.verbose_skip);
@@ -107,7 +108,7 @@ pub fn build_with_dirty(
     let root = environment::root_dir();
     let trees_dir = environment::trees_dir();
     let workspace = all_trees_source(&trees_dir)?;
-    compiler::sync_typst_svg_assets(trees_dir.as_path(), dirty_paths)?;
+    compiler::sync_typst_svg_assets(trees_dir.as_path())?;
     let expanded_dirty = dirty_paths.map(|paths| compiler::expand_dirty_paths(&workspace, paths));
     compile_with_mode(mode, workspace, expanded_dirty.as_ref(), options.outputs).wrap_err_with(
         || {
@@ -127,6 +128,7 @@ pub fn build_with_dirty(
 
 pub fn serve_rewrite_from_memory(config: &str, options: BuildOptions) -> eyre::Result<()> {
     environment::init_environment(Utf8Path::new(config), BuildMode::Serve)?;
+    crate::typst_cache::begin_build();
     environment::ensure_cache_version()?;
     _ = VERBOSE.set(options.verbose);
     _ = VERBOSE_SKIP.set(options.verbose_skip);
@@ -201,7 +203,7 @@ fn rewrite_serve_with_session(outputs: compiler::CompileOutputs) -> eyre::Result
         // Fallback for edge cases where serve-session state was not initialized.
         let trees_dir = environment::trees_dir();
         let workspace = all_trees_source(&trees_dir)?;
-        compiler::sync_typst_svg_assets(trees_dir.as_path(), None)?;
+        compiler::sync_typst_svg_assets(trees_dir.as_path())?;
         let session = slot.get_or_insert_with(compiler::ServeCompileSession::default);
         session.compile_full(workspace, outputs)
     })

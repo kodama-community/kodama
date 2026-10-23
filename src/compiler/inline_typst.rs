@@ -4,6 +4,7 @@
 
 use std::{
     cell::RefCell,
+    collections::HashSet,
     sync::atomic::{AtomicBool, Ordering},
 };
 
@@ -13,6 +14,7 @@ use crate::{
     },
     html_flake::html_inline_typst_span,
     slug::Slug,
+    typst_cache::{self, Dependencies},
     typst_cli,
 };
 
@@ -31,6 +33,18 @@ struct InlineBatch {
     pending: Vec<(String, String, Slug)>,
 }
 
+pub struct RenderedInlineBatch {
+    pub contents: Vec<String>,
+    sources: HashSet<Slug>,
+    dependencies: Dependencies,
+}
+
+impl RenderedInlineBatch {
+    pub fn dependencies_for(&self, source: Slug) -> Option<&Dependencies> {
+        self.sources.contains(&source).then_some(&self.dependencies)
+    }
+}
+
 thread_local! {
     static INLINE_BATCH: RefCell<InlineBatch> = RefCell::new(InlineBatch::default());
 }
@@ -39,6 +53,7 @@ thread_local! {
 pub fn begin_inline_batch() {
     INLINE_BATCH.with(|batch| batch.borrow_mut().pending.clear());
     reset_typst_render_error_flag();
+    crate::typst_cache::begin_phase();
 }
 
 /// Register an inline formula and return its global (phase-local) index.
@@ -52,8 +67,18 @@ pub(crate) fn push_inline_formula(shareds: String, source: String, current_slug:
 
 /// Compile all formulas collected during the current parse phase. Returns the
 /// compiled inline svg html in formula order.
-pub fn compile_inline_batch() -> eyre::Result<Vec<String>> {
+pub fn compile_inline_batch() -> eyre::Result<RenderedInlineBatch> {
     let pending = INLINE_BATCH.with(|batch| std::mem::take(&mut batch.borrow_mut().pending));
+    let sources = pending.iter().map(|(_, _, slug)| *slug).collect();
+    let (contents, dependencies) = typst_cache::capture_dependencies(|| compile_pending(pending))?;
+    Ok(RenderedInlineBatch {
+        contents,
+        sources,
+        dependencies,
+    })
+}
+
+fn compile_pending(pending: Vec<(String, String, Slug)>) -> eyre::Result<Vec<String>> {
     if pending.is_empty() {
         return finish_render_results(Vec::new());
     }

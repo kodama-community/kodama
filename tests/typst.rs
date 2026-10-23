@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Kodama Project. All rights reserved.
+// Released under the GPL-3.0 license as described in the file LICENSE.
+
 use std::{
     fs,
     path::PathBuf,
@@ -33,11 +36,13 @@ impl Site {
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_kodama"))
-            .args(args)
-            .current_dir(&self.0)
-            .output()
-            .unwrap()
+        self.command(args).output().unwrap()
+    }
+
+    fn command(&self, args: &[&str]) -> Command {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_kodama"));
+        command.args(args).current_dir(&self.0);
+        command
     }
 
     fn build(&self) {
@@ -48,6 +53,248 @@ impl Site {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+}
+
+#[test]
+fn markdown_only_builds_do_not_require_typst() {
+    let site = Site::new();
+    site.write("trees/index.md", "# Plain Markdown\n\nContent\n");
+    for _ in 0..2 {
+        let output = site.command(&["build"]).env("PATH", "").output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires Typst 0.15+ on PATH"]
+fn imported_typst_files_invalidate_cached_pages() {
+    let site = Site::new();
+    site.write("trees/_lib/shared.typ", "#let message = [BEFORE_IMPORT]");
+    site.write(
+        "trees/index.typst",
+        "#import \"_lib/shared.typ\": message\n#message",
+    );
+    site.build();
+    assert!(fs::read_to_string(site.0.join("publish/index.html"))
+        .unwrap()
+        .contains("BEFORE_IMPORT"));
+
+    site.write(
+        "trees/_lib/shared.typ",
+        "#let message = [AFTER_IMPORT_CHANGED]",
+    );
+    site.build();
+    let page = fs::read_to_string(site.0.join("publish/index.html")).unwrap();
+    assert!(page.contains("AFTER_IMPORT_CHANGED"));
+    assert!(!page.contains("BEFORE_IMPORT"));
+    fs::remove_file(site.0.join("trees/_lib/shared.typ")).unwrap();
+    assert!(!site.run(&["build"]).status.success());
+}
+
+#[test]
+#[ignore = "requires Typst 0.15+ on PATH"]
+fn imported_typst_files_invalidate_svg_artifacts() {
+    let site = Site::new();
+    site.write("trees/index.md", "# SVG imports");
+    site.write("trees/_lib/shared.typ", "#let radius = 10pt");
+    site.write(
+        "trees/shape.typ",
+        "#import \"_lib/shared.typ\": radius\n#circle(radius: radius)",
+    );
+    site.build();
+    let original = fs::read(site.0.join("publish/shape.svg")).unwrap();
+    site.write("trees/_lib/shared.typ", "#let radius = 20pt");
+    site.build();
+    assert_ne!(
+        fs::read(site.0.join("publish/shape.svg")).unwrap(),
+        original
+    );
+}
+
+#[test]
+#[ignore = "requires Typst 0.15+ on PATH"]
+fn imported_typst_files_invalidate_html_fragments() {
+    let site = Site::new();
+    site.write(
+        "trees/index.md",
+        "# HTML imports\n\n[fragment](_lib/fragment.typ#:html)",
+    );
+    site.write(
+        "trees/_lib/fragment.typ",
+        "#import \"shared.typ\": message\n#message",
+    );
+    site.write("trees/_lib/shared.typ", "#let message = [BEFORE_FRAGMENT]");
+    site.build();
+    site.write(
+        "trees/_lib/shared.typ",
+        "#let message = [AFTER_FRAGMENT_CHANGED]",
+    );
+    site.build();
+    let page = fs::read_to_string(site.0.join("publish/index.html")).unwrap();
+    assert!(page.contains("AFTER_FRAGMENT_CHANGED"));
+    assert!(!page.contains("BEFORE_FRAGMENT"));
+}
+
+#[test]
+#[ignore = "requires Typst 0.15+ on PATH"]
+fn shared_typst_imports_invalidate_markdown_inline_content() {
+    let site = Site::new();
+    site.write(
+        "trees/index.md",
+        "# Inline imports\n\n[message](/_lib/shared.typ#:shared)\n\n[#message](inline)",
+    );
+    site.write("trees/_lib/shared.typ", "#let message = [BEFORE_INLINE]");
+    site.build();
+    site.write(
+        "trees/_lib/shared.typ",
+        "#let message = [AFTER_INLINE_CHANGED]",
+    );
+    site.build();
+    let page = fs::read_to_string(site.0.join("publish/index.html")).unwrap();
+    assert!(page.contains("AFTER_INLINE_CHANGED"));
+    assert!(!page.contains("BEFORE_INLINE"));
+}
+
+#[test]
+#[ignore = "requires Typst 0.15+ on PATH"]
+fn unrelated_typst_pages_keep_their_cached_entries() {
+    let site = Site::new();
+    site.write("trees/index.typst", "First page");
+    site.write("trees/other.typst", "Unrelated page");
+    site.build();
+    let path = site.0.join(".cache/entry/other.typst.entry");
+    let before = fs::metadata(&path).unwrap().modified().unwrap();
+    site.write("trees/index.typst", "First page changed");
+    site.build();
+    assert_eq!(fs::metadata(path).unwrap().modified().unwrap(), before);
+}
+
+#[test]
+#[ignore = "requires Typst 0.15+ on PATH"]
+fn serve_refreshes_inline_content_and_svgs_after_import_changes() {
+    use std::{
+        io::{BufRead, BufReader},
+        process::{Child, Stdio},
+        sync::mpsc,
+        thread,
+        time::Duration,
+    };
+    struct Preview(Child, Option<thread::JoinHandle<()>>);
+    impl Drop for Preview {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+            if let Some(reader) = self.1.take() {
+                let _ = reader.join();
+            }
+        }
+    }
+    let site = Site::new();
+    site.write(
+        "trees/index.md",
+        "# Watch imports\n\n[message](/_lib/shared.typ#:shared)\n\n[#message](inline)",
+    );
+    site.write(
+        "trees/shape.typ",
+        "#import \"_lib/shared.typ\": radius\n#circle(radius: radius)",
+    );
+    site.write(
+        "trees/_lib/shared.typ",
+        "#let message = [BEFORE_WATCH]\n#let radius = 10pt",
+    );
+    let mut child = site
+        .command(&["serve", "--no-server", "--print-json"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let (sender, receiver) = mpsc::channel();
+    let reader = thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if sender.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let _preview = Preview(child, Some(reader));
+    let event = |name| loop {
+        let line = receiver
+            .recv_timeout(Duration::from_secs(20))
+            .expect("preview event timed out");
+        if serde_json::from_str::<serde_json::Value>(&line)
+            .is_ok_and(|value| value["event"] == name)
+        {
+            break;
+        }
+    };
+    event("ready");
+    let original = fs::read(site.0.join(".cache/publish/shape.svg")).unwrap();
+    site.write(
+        "trees/_lib/shared.typ",
+        "#let message = [AFTER_WATCH_CHANGED]\n#let radius = 20pt",
+    );
+    event("rebuilt");
+    let page = fs::read_to_string(site.0.join(".cache/publish/index.html")).unwrap();
+    assert!(page.contains("AFTER_WATCH_CHANGED"));
+    assert!(!page.contains("BEFORE_WATCH"));
+    assert_ne!(
+        fs::read(site.0.join(".cache/publish/shape.svg")).unwrap(),
+        original
+    );
+}
+
+#[cfg(unix)]
+#[test]
+#[ignore = "requires Typst 0.15+ on PATH"]
+fn renderer_identity_changes_invalidate_cached_pages() {
+    use std::os::unix::fs::PermissionsExt;
+    let site = Site::new();
+    site.write("trees/index.typst", "Versioned content");
+    let binary = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|dir| dir.join("typst"))
+        .find(|path| path.is_file())
+        .unwrap();
+    let quote =
+        |path: &std::path::Path| format!("'{}'", path.to_str().unwrap().replace('\'', "'\\''"));
+    let wrapper = site.0.join("bin/typst");
+    let log = site.0.join("compile.log");
+    let script = |version| {
+        format!("#!/bin/sh\nif [ \"$1\" = --version ]; then\n  printf 'typst {version} cache-test\\n'\nelse\n  printf 'compile\\n' >> {}\n  exec {} \"$@\"\nfi\n", quote(&log), quote(&binary))
+    };
+    site.write("bin/typst", &script("0.15.0"));
+    fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o755)).unwrap();
+    let build = || {
+        let output = site
+            .command(&["build"])
+            .env("PATH", site.0.join("bin"))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    build();
+    build();
+    assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 1);
+    site.write("bin/typst", &script("0.15.1"));
+    build();
+    assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 2);
+    site.write("bin/typst", &script("0.14.2"));
+    let output = site
+        .command(&["build"])
+        .env("PATH", site.0.join("bin"))
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Typst 0.15 or newer is required"));
+    assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 2);
 }
 
 impl Drop for Site {
