@@ -80,7 +80,7 @@ impl<'a> HTMLParser<'a> {
             }
             fn attrs(alt: u8) -> String {
                 format!(
-                    r#"(?<attrs{}>(\s+([a-zA-Z-]+)(="([^"\\]|\\[\s\S])*")?)*)"#,
+                    r#"(?<attrs{}>(\s+[a-zA-Z_:][a-zA-Z0-9_.:-]*(\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*"#,
                     alt
                 )
             }
@@ -221,7 +221,10 @@ impl<'a> Iterator for HTMLParser<'a> {
         }
 
         static RE_ATTR: LazyLock<Regex> = LazyLock::new(|| {
-            Regex::new(r#"(?<key>[a-zA-Z-]+)(="(?<value>([^"\\]|\\[\s\S])*)")?"#).unwrap()
+            Regex::new(
+                r#"(?<key>[a-zA-Z_:][a-zA-Z0-9_.:-]*)(\s*=\s*("(?<double>[^"]*)"|'(?<single>[^']*)'|(?<unquoted>[^\s"'=<>`]+)))?"#,
+            )
+            .unwrap()
         });
 
         let mut attrs: HashMap<&str, Cow<'_, str>> = HashMap::new();
@@ -231,7 +234,12 @@ impl<'a> Iterator for HTMLParser<'a> {
             };
             attrs.insert(
                 key.as_str(),
-                unescape_attribute(c.name("value").map_or("", |m| m.as_str())),
+                unescape_attribute(
+                    c.name("double")
+                        .or_else(|| c.name("single"))
+                        .or_else(|| c.name("unquoted"))
+                        .map_or("", |m| m.as_str()),
+                ),
             );
         }
 
@@ -242,5 +250,40 @@ impl<'a> Iterator for HTMLParser<'a> {
             attrs,
             body: self.html_str[open_tag.end..close_tag.start].trim(),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HTMLParser;
+
+    #[test]
+    fn attributes_preserve_literal_backslashes() {
+        let html = r#"<kodama-meta key="title" value="C:\notes\"></kodama-meta>"#;
+        let tag = HTMLParser::new(html).next().unwrap().unwrap();
+        assert_eq!(tag.attrs["value"], "C:\\notes\\");
+    }
+
+    #[test]
+    fn attributes_accept_html_quoting_and_entities() {
+        for html in [
+            r#"<kodama-meta key="title" value="A &quot;quote&quot; &amp; B"></kodama-meta>"#,
+            r#"<kodama-meta key='title' value='A &quot;quote&quot; &amp; B'></kodama-meta>"#,
+            r#"<kodama-meta key=title value=A&#32;&quot;quote&quot;&#32;&amp;&#32;B ></kodama-meta>"#,
+        ] {
+            let tag = HTMLParser::new(html).next().unwrap().unwrap();
+            assert_eq!(tag.attrs["key"], "title");
+            assert_eq!(tag.attrs["value"], "A \"quote\" & B");
+        }
+    }
+
+    #[test]
+    fn attributes_do_not_confuse_nested_marker_boundaries() {
+        let html = r#"<kodama-subtree slug='child' data-v1="x > y"><kodama-meta key=title value='Child'></kodama-meta></kodama-subtree>"#;
+        let tag = HTMLParser::new(html).next().unwrap().unwrap();
+        assert_eq!(tag.attrs["slug"], "child");
+        assert_eq!(tag.attrs["data-v1"], "x > y");
+        let nested = HTMLParser::new(tag.body).next().unwrap().unwrap();
+        assert_eq!(nested.attrs["value"], "Child");
     }
 }
