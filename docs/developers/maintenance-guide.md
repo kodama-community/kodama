@@ -165,13 +165,13 @@ Use focused tests around:
 
 For broad changes, run the full Rust test suite and perform a smoke build of a demo site.
 
-Typst integration tests require Typst 0.15 or newer on `PATH`. Run them explicitly with:
+Typst integration tests require Typst on `PATH`. Run them explicitly with:
 
 ```sh
 cargo test --locked --test typst -- --include-ignored
 ```
 
-The compatibility workflow is configured to run these tests with Typst 0.15.0 and 0.15.1 on Linux, macOS, and Windows. Release builds depend on this check. Keep a tested minimum version and a current patch version in the matrix when updating Typst support.
+The compatibility workflow is configured to run these tests with Typst 0.15.0 and 0.15.1 on Linux, macOS, and Windows. Release builds depend on this check. Keep two explicitly tested versions in the matrix when updating Typst support. Runtime cache invalidation compares the compiler's complete reported identity without enforcing a version number.
 
 ## Documentation Maintenance
 

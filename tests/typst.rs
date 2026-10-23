@@ -70,7 +70,7 @@ fn markdown_only_builds_do_not_require_typst() {
 }
 
 #[test]
-#[ignore = "requires Typst 0.15+ on PATH"]
+#[ignore = "requires Typst on PATH"]
 fn imported_typst_files_invalidate_cached_pages() {
     let site = Site::new();
     site.write("trees/_lib/shared.typ", "#let message = [BEFORE_IMPORT]");
@@ -96,7 +96,7 @@ fn imported_typst_files_invalidate_cached_pages() {
 }
 
 #[test]
-#[ignore = "requires Typst 0.15+ on PATH"]
+#[ignore = "requires Typst on PATH"]
 fn imported_typst_files_invalidate_svg_artifacts() {
     let site = Site::new();
     site.write("trees/index.md", "# SVG imports");
@@ -116,7 +116,7 @@ fn imported_typst_files_invalidate_svg_artifacts() {
 }
 
 #[test]
-#[ignore = "requires Typst 0.15+ on PATH"]
+#[ignore = "requires Typst on PATH"]
 fn imported_typst_files_invalidate_html_fragments() {
     let site = Site::new();
     site.write(
@@ -140,7 +140,7 @@ fn imported_typst_files_invalidate_html_fragments() {
 }
 
 #[test]
-#[ignore = "requires Typst 0.15+ on PATH"]
+#[ignore = "requires Typst on PATH"]
 fn shared_typst_imports_invalidate_markdown_inline_content() {
     let site = Site::new();
     site.write(
@@ -160,7 +160,7 @@ fn shared_typst_imports_invalidate_markdown_inline_content() {
 }
 
 #[test]
-#[ignore = "requires Typst 0.15+ on PATH"]
+#[ignore = "requires Typst on PATH"]
 fn unrelated_typst_pages_keep_their_cached_entries() {
     let site = Site::new();
     site.write("trees/index.typst", "First page");
@@ -174,7 +174,7 @@ fn unrelated_typst_pages_keep_their_cached_entries() {
 }
 
 #[test]
-#[ignore = "requires Typst 0.15+ on PATH"]
+#[ignore = "requires Typst on PATH"]
 fn serve_refreshes_inline_content_and_svgs_after_import_changes() {
     use std::{
         io::{BufRead, BufReader},
@@ -250,7 +250,7 @@ fn serve_refreshes_inline_content_and_svgs_after_import_changes() {
 
 #[cfg(unix)]
 #[test]
-#[ignore = "requires Typst 0.15+ on PATH"]
+#[ignore = "requires Typst on PATH"]
 fn renderer_identity_changes_invalidate_cached_pages() {
     use std::os::unix::fs::PermissionsExt;
     let site = Site::new();
@@ -286,15 +286,10 @@ fn renderer_identity_changes_invalidate_cached_pages() {
     site.write("bin/typst", &script("0.15.1"));
     build();
     assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 2);
-    site.write("bin/typst", &script("0.14.2"));
-    let output = site
-        .command(&["build"])
-        .env("PATH", site.0.join("bin"))
-        .output()
-        .unwrap();
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("Typst 0.15 or newer is required"));
-    assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 2);
+    // The compiler output is only a cache identity, not a version requirement.
+    site.write("bin/typst", &script("local-build"));
+    build();
+    assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 3);
 }
 
 impl Drop for Site {
@@ -304,7 +299,7 @@ impl Drop for Site {
 }
 
 #[test]
-#[ignore = "requires Typst 0.15+ on PATH"]
+#[ignore = "requires Typst on PATH"]
 fn svg_errors_fail_build_and_are_retried() {
     let site = Site::new();
     site.write("trees/index.md", "# SVG\n\n![shape](shape.svg)\n");
@@ -330,7 +325,7 @@ fn svg_errors_fail_build_and_are_retried() {
 }
 
 #[test]
-#[ignore = "requires Typst 0.15+ on PATH"]
+#[ignore = "requires Typst on PATH"]
 fn inline_errors_do_not_become_successful_cached_pages() {
     let site = Site::new();
     site.write("trees/index.md", "# Inline\n\n[#unknown_formula](inline)\n");
@@ -343,7 +338,7 @@ fn inline_errors_do_not_become_successful_cached_pages() {
 }
 
 #[test]
-#[ignore = "requires Typst 0.15+ on PATH"]
+#[ignore = "requires Typst on PATH"]
 fn html_errors_fail_build_and_are_retried() {
     let site = Site::new();
     site.write(
@@ -365,7 +360,7 @@ fn html_errors_fail_build_and_are_retried() {
 }
 
 #[test]
-#[ignore = "requires Typst 0.15+ on PATH"]
+#[ignore = "requires Typst on PATH"]
 fn typst_pages_and_embeds_have_one_document_shell() {
     let site = Site::new();
     let header = "#import \"_lib/kodama.typ\": *\n#show: kodama\n";

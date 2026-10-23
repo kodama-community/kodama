@@ -78,7 +78,7 @@ fn typst_version() -> eyre::Result<String> {
     let output = Command::new("typst")
         .arg("--version")
         .output()
-        .wrap_err("failed to run Typst; install Typst 0.15 or newer and put it on PATH")?;
+        .wrap_err("failed to run Typst; install Typst and put it on PATH")?;
     if !output.status.success() {
         bail!(
             "failed to read Typst version: {}",
@@ -86,24 +86,8 @@ fn typst_version() -> eyre::Result<String> {
         );
     }
     let version = String::from_utf8(output.stdout)?.trim().to_string();
-    validate_version(&version)?;
     VERSION.with(|current| *current.borrow_mut() = Some(version.clone()));
     Ok(version)
-}
-
-fn validate_version(version: &str) -> eyre::Result<()> {
-    let numbers = version
-        .strip_prefix("typst ")
-        .and_then(|version| version.split_whitespace().next())
-        .ok_or_else(|| eyre!("unrecognized Typst version: `{version}`"))?;
-    let mut parts = numbers.split('.');
-    let major = parts.next().and_then(|part| part.parse::<u32>().ok());
-    let minor = parts.next().and_then(|part| part.parse::<u32>().ok());
-    match (major, minor) {
-        (Some(0), Some(minor)) if minor >= 15 => Ok(()),
-        (Some(major), Some(_)) if major >= 1 => Ok(()),
-        _ => bail!("Typst 0.15 or newer is required; found `{version}`"),
-    }
 }
 
 /// A per-invocation dependency report. Check mode only writes this temporary
@@ -222,17 +206,4 @@ pub fn save_artifact(
         dependencies,
     })?;
     fs::write(path, bytes).wrap_err("failed to write Typst artifact cache")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::validate_version;
-
-    #[test]
-    fn version_check_reports_unsupported_or_unrecognized_versions() {
-        assert!(validate_version("typst 0.15.0 (abc123)").is_ok());
-        assert!(validate_version("typst 0.15.1").is_ok());
-        assert!(validate_version("typst 0.14.2").is_err());
-        assert!(validate_version("unexpected output").is_err());
-    }
 }
