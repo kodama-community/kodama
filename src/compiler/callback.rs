@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::slug::Slug;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallbackValue {
     pub parent: Slug,
     pub is_parent_specified: bool,
@@ -15,7 +15,7 @@ pub struct CallbackValue {
     pub backlinks: HashSet<Slug>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct Callback(pub HashMap<Slug, CallbackValue>);
 
 impl Callback {

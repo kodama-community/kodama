@@ -131,8 +131,6 @@ pub(super) fn compile_from_shallows(
         .collect();
     all_slugs.sort();
 
-    let indexes = outputs.indexes.then(|| indexes_from_shallows(shallows));
-
     let state = state::compile_all(shallows)?;
     let slugs_to_write: Vec<Slug> = match dirty_paths {
         Some(dirty_paths) => {
@@ -155,11 +153,21 @@ pub(super) fn compile_from_shallows(
         None => all_slugs,
     };
 
-    Writer::write_needed_slugs(slugs_to_write, &state)
+    write_compiled_state(shallows, &state, slugs_to_write, outputs)
+}
+
+pub(super) fn write_compiled_state(
+    shallows: &UnresolvedSections,
+    state: &state::CompileState,
+    slugs_to_write: Vec<Slug>,
+    outputs: CompileOutputs,
+) -> eyre::Result<()> {
+    let indexes = outputs.indexes.then(|| indexes_from_shallows(shallows));
+    Writer::write_needed_slugs(slugs_to_write, state)
         .wrap_err("failed to write compiled HTML files")?;
 
     let graph_payload = if outputs.graph {
-        let graph = graph_snapshot(&state);
+        let graph = graph_snapshot(state);
         Some(
             serde_json::to_string(&graph)
                 .wrap_err_with(|| eyre!("failed to serialize graph to JSON"))?,
@@ -191,7 +199,7 @@ pub(super) fn compile_from_shallows(
         let feed_path = environment::feed_path(output_dir.as_path());
         let feed_payload = if environment::publish_rss() {
             rss::ensure_publish_rss_base_url_is_absolute()?;
-            Some(rss::feed_xml(&state)?)
+            Some(rss::feed_xml(state)?)
         } else {
             None
         };

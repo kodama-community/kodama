@@ -2,6 +2,11 @@
 // Released under the GPL-3.0 license as described in the file LICENSE.
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
+mod cache;
+
+pub(super) use cache::CompileCache;
+use cache::{CompileEvent, SectionRelations};
+
 use eyre::eyre;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
@@ -31,6 +36,12 @@ pub struct CompileState {
     callback: Callback,
     visiting: HashSet<Slug>,
     compile_stack: Vec<Slug>,
+    retain_cache: bool,
+    relations: HashMap<Slug, SectionRelations>,
+    recording: Vec<SectionRelations>,
+    hidden_sections: HashMap<Slug, Section>,
+    hidden_references: HashMap<Slug, HashSet<Slug>>,
+    recompiled: HashSet<Slug>,
     /// Memoized footer HTML per (referenced section, footer mode). Sections are
     /// immutable once compiled, so a section referenced by many pages is
     /// rendered once instead of once per reference. Scoped to this build's
@@ -54,9 +65,25 @@ fn compile_all_with_missing_index_warning(
     shallows: &UnresolvedSections,
     emit_missing_index_warning: bool,
 ) -> eyre::Result<CompileState> {
-    let residued: BTreeSet<Slug> = shallows.keys().copied().collect();
+    compile_with_cache(shallows, emit_missing_index_warning, None)
+}
 
-    let mut state = CompileState::new(residued);
+fn compile_with_cache(
+    shallows: &UnresolvedSections,
+    emit_missing_index_warning: bool,
+    cached: Option<CompileCache>,
+) -> eyre::Result<CompileState> {
+    let residued: BTreeSet<Slug> = shallows
+        .keys()
+        .copied()
+        .filter(|slug| {
+            cached
+                .as_ref()
+                .is_none_or(|cache| !cache.sections.contains_key(slug))
+        })
+        .collect();
+
+    let mut state = CompileState::new(residued, cached);
     let compiled_index = state.compile(shallows, Slug::new("index"))?;
     if emit_missing_index_warning && compiled_index.is_none() {
         color_print::ceprintln!(
@@ -73,18 +100,29 @@ fn compile_all_with_missing_index_warning(
         state.compile(shallows, slug)?;
     }
 
+    if state.retain_cache {
+        state.rebuild_callback();
+    }
     state.normalize_internal_anonymous_graph();
     Ok(state)
 }
 
 impl CompileState {
-    fn new(residued: BTreeSet<Slug>) -> CompileState {
+    fn new(residued: BTreeSet<Slug>, cached: Option<CompileCache>) -> CompileState {
+        let retain_cache = cached.is_some();
+        let cached = cached.unwrap_or_default();
         CompileState {
             residued,
-            compiled: HashMap::new(),
+            compiled: cached.sections,
             callback: Callback::new(),
             visiting: HashSet::new(),
             compile_stack: Vec::new(),
+            retain_cache,
+            relations: cached.relations,
+            recording: Vec::new(),
+            hidden_sections: HashMap::new(),
+            hidden_references: HashMap::new(),
+            recompiled: HashSet::new(),
             footer_memo: Mutex::new(HashMap::new()),
         }
     }
@@ -116,13 +154,41 @@ impl CompileState {
         let Some(shallow) = shallows.get(&slug) else {
             return Ok(None);
         };
+
         self.visiting.insert(slug);
         self.compile_stack.push(slug);
+        if self.retain_cache {
+            self.recording.push(SectionRelations::default());
+        }
         let result = self.compile_unresolved(shallows, shallow);
+        let relations = self.recording.pop();
         self.compile_stack.pop();
         self.visiting.remove(&slug);
         result?;
+        if let Some(relations) = relations {
+            self.relations.insert(slug, relations);
+            self.recompiled.insert(slug);
+        }
         Ok(self.compiled.get(&slug))
+    }
+
+    fn record_dependency(&mut self, slug: Slug, embedded: bool) {
+        if let Some(relations) = self.recording.last_mut() {
+            relations.dependencies.insert(slug);
+            if embedded {
+                relations.events.push(CompileEvent::Embed(slug));
+            }
+        }
+    }
+
+    fn merge_callback(&mut self, callback: Callback) {
+        if let Some(relations) = self.recording.last_mut() {
+            if !callback.0.is_empty() {
+                relations.events.push(CompileEvent::Callback(callback));
+            }
+        } else {
+            self.callback.merge(callback);
+        }
     }
 
     fn compile_unresolved(
@@ -149,6 +215,7 @@ impl CompileState {
                         }
                         LazyContent::Embed(embed_content) => {
                             let child_slug = subsection_slug(slug, &embed_content.url);
+                            self.record_dependency(child_slug, true);
 
                             let refered =
                                 self.fetch_section(shallows, child_slug)?.ok_or_else(|| {
@@ -173,6 +240,7 @@ impl CompileState {
                         }
                         LazyContent::Local(local_link) => {
                             let link_slug = subsection_slug(slug, &local_link.url);
+                            self.record_dependency(link_slug, false);
 
                             let metadata = get_metadata(shallows, link_slug);
                             let article_title_html = metadata
@@ -217,12 +285,14 @@ impl CompileState {
                     }
                 }
 
-                self.callback.merge(callback);
+                self.merge_callback(callback);
             }
         };
 
         if let Some(parent) = spanned.metadata.parent() {
-            self.callback.specify_parent(slug, parent);
+            let mut callback = Callback::new();
+            callback.specify_parent(slug, parent);
+            self.merge_callback(callback);
         }
 
         // compile metadata: built-in fields are already parsed and validated at
@@ -294,7 +364,17 @@ impl CompileState {
             return;
         }
 
-        for section in self.compiled.values_mut() {
+        for (&slug, section) in &mut self.compiled {
+            if self.retain_cache {
+                let hidden: HashSet<Slug> = section
+                    .references
+                    .intersection(&internal_slugs)
+                    .copied()
+                    .collect();
+                if !hidden.is_empty() {
+                    self.hidden_references.insert(slug, hidden);
+                }
+            }
             section
                 .references
                 .retain(|reference| !internal_slugs.contains(reference));
@@ -324,8 +404,13 @@ impl CompileState {
         self.callback
             .0
             .retain(|slug, _| !internal_slugs.contains(slug));
-        self.compiled
-            .retain(|slug, _| !internal_slugs.contains(slug));
+        for slug in internal_slugs {
+            if let Some(section) = self.compiled.remove(&slug) {
+                if self.retain_cache {
+                    self.hidden_sections.insert(slug, section);
+                }
+            }
+        }
     }
 
     fn collect_internal_anonymous_slugs(&self) -> HashSet<Slug> {
