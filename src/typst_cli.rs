@@ -31,7 +31,9 @@ pub fn write_to_inline_html<P: AsRef<Utf8Path>>(
     }
 
     let root_dir = environment::trees_dir();
-    let html = to_html_string(typst_path.as_ref(), &root_dir)?;
+    let html = to_html_string(typst_path.as_ref(), &root_dir).inspect_err(|_| {
+        let _ = fs::remove_file(environment::hash_file_path(typst_path.as_ref()));
+    })?;
     let html_body = html_to_body_content(&html)?;
 
     fs::write(html_path.as_ref(), html)?;
@@ -239,6 +241,7 @@ fn source_to_html(src: &str) -> eyre::Result<String> {
         .arg("-")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()?;
 
     {
@@ -296,6 +299,8 @@ pub fn write_svg<P: AsRef<Utf8Path>>(typst_path: P, svg_path: P) -> eyre::Result
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         failed_in_file(concat!(file!(), '#', line!()), full_path.as_str(), stderr);
+        let _ = fs::remove_file(environment::hash_file_path(typst_path));
+        return Err(eyre!("typst SVG compilation failed for `{}`", typst_path));
     }
     Ok(())
 }

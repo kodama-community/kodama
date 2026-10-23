@@ -140,7 +140,7 @@ pub fn sync_typst_svg_assets(
             if !full_path.is_file() {
                 continue;
             }
-            compile_typst_svg(trees_dir, relative.as_path());
+            compile_typst_svg(trees_dir, relative.as_path())?;
         }
     } else {
         for entry in WalkDir::new(trees_dir)
@@ -180,20 +180,18 @@ pub fn sync_typst_svg_assets(
             let Ok(relative) = path.strip_prefix(trees_dir) else {
                 continue;
             };
-            compile_typst_svg(trees_dir, relative);
+            compile_typst_svg(trees_dir, relative)?;
         }
     }
 
     Ok(())
 }
 
-fn compile_typst_svg(trees_dir: &Utf8Path, relative: &Utf8Path) {
+fn compile_typst_svg(trees_dir: &Utf8Path, relative: &Utf8Path) -> eyre::Result<()> {
     let svg_url = relative.with_extension("svg");
     let svg_path = environment::output_path(&svg_url);
-    if let Err(err) = crate::typst_cli::write_svg(relative, &svg_path) {
-        let full_path = trees_dir.join(relative);
-        color_print::ceprintln!("<r>{:?} at {}</>", err, full_path);
-    }
+    crate::typst_cli::write_svg(relative, &svg_path)
+        .wrap_err_with(|| eyre!("failed to compile Typst SVG `{}`", trees_dir.join(relative)))
 }
 
 fn is_under_ignored_dir(path: &Utf8Path) -> bool {

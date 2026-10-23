@@ -230,7 +230,7 @@ pub(super) fn collect_shallows_with_sources(
     // Inline typst formulas are compiled in a single batched invocation once
     // every source has been parsed; only then can the placeholders be resolved
     // and the entry caches written.
-    let results = inline_typst::compile_inline_batch();
+    let results = inline_typst::compile_inline_batch()?;
 
     let mut shallows = HashMap::new();
     let mut source_sections = HashMap::new();

@@ -171,7 +171,7 @@ fn parse_shallows_no_cache(
     }
 
     // Compile inline formulas (reporting errors) and resolve placeholders.
-    let results = inline_typst::compile_inline_batch();
+    let results = inline_typst::compile_inline_batch().unwrap_or_default();
     for section in shallows.values_mut() {
         inline_typst::resolve_inline_typst_section(section, &results);
     }

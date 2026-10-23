@@ -38,6 +38,7 @@ thread_local! {
 /// Reset the inline formula registry for a new parse phase.
 pub fn begin_inline_batch() {
     INLINE_BATCH.with(|batch| batch.borrow_mut().pending.clear());
+    reset_typst_render_error_flag();
 }
 
 /// Register an inline formula and return its global (phase-local) index.
@@ -51,14 +52,14 @@ pub(crate) fn push_inline_formula(shareds: String, source: String, current_slug:
 
 /// Compile all formulas collected during the current parse phase. Returns the
 /// compiled inline svg html in formula order.
-pub fn compile_inline_batch() -> Vec<String> {
+pub fn compile_inline_batch() -> eyre::Result<Vec<String>> {
     let pending = INLINE_BATCH.with(|batch| std::mem::take(&mut batch.borrow_mut().pending));
     if pending.is_empty() {
-        return Vec::new();
+        return finish_render_results(Vec::new());
     }
 
     let groups = group_formulas(&pending);
-    match typst_cli::source_to_inline_svgs_grouped(&groups) {
+    let results = match typst_cli::source_to_inline_svgs_grouped(&groups) {
         Ok(segments) => wrap_segments(segments),
         Err(_) => {
             // Fall back per group to keep error handling isolated: a failure in
@@ -99,7 +100,15 @@ pub fn compile_inline_batch() -> Vec<String> {
             }
             results
         }
+    };
+    finish_render_results(results)
+}
+
+fn finish_render_results(results: Vec<String>) -> eyre::Result<Vec<String>> {
+    if typst_render_error_detected() {
+        return Err(eyre::eyre!("Typst rendering failed"));
     }
+    Ok(results)
 }
 
 /// Group consecutive formulas sharing the same shareds header. Consecutive

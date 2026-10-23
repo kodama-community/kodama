@@ -102,7 +102,7 @@ impl ServeCompileSession {
 
         // Compile all freshly parsed inline formulas in one batch, then resolve
         // their placeholders and write the entry caches.
-        let results = inline_typst::compile_inline_batch();
+        let results = inline_typst::compile_inline_batch()?;
         for (source_slug, mut sections, cache) in parsed {
             for (_, section) in &mut sections {
                 inline_typst::resolve_inline_typst_section(section, &results);
