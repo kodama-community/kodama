@@ -11,11 +11,7 @@ env:
   BIN_NAME: kodama
 
 jobs:
-  typst:
-    uses: ./.github/workflows/typst.yml
-
   build:
-    needs: typst
     name: build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
