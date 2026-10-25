@@ -190,7 +190,7 @@ fn sync_kodama_typ(
     })?;
     std::fs::create_dir_all(parent)
         .wrap_err_with(|| eyre!("failed to create Typst library directory \"{}\"", parent))?;
-    std::fs::write(&typ_path, include_str!("../include/kodama.typ"))
+    std::fs::write(&typ_path, crate::typst_cli::KODAMA_TYP)
         .wrap_err_with(|| eyre!("failed to sync Typst library file \"{}\"", typ_path))?;
     Ok(typ_path)
 }
@@ -258,7 +258,7 @@ output = "./dist"
         let synced = sync_kodama_typ(config_path.as_path(), &cfg).unwrap();
         assert_eq!(synced, typ_path);
         let content = std::fs::read_to_string(typ_path.as_std_path()).unwrap();
-        assert_eq!(content, include_str!("../include/kodama.typ"));
+        assert_eq!(content, crate::typst_cli::KODAMA_TYP);
 
         let _ = std::fs::remove_dir_all(root.as_std_path());
     }
@@ -290,7 +290,7 @@ trees = "content"
         assert!(upgraded.contains("trees = \"content\""));
         let typ_path = root.join("content/_lib/kodama.typ");
         let typ_content = std::fs::read_to_string(typ_path.as_std_path()).unwrap();
-        assert_eq!(typ_content, include_str!("../include/kodama.typ"));
+        assert_eq!(typ_content, crate::typst_cli::KODAMA_TYP);
 
         let _ = std::fs::remove_dir_all(root.as_std_path());
     }
@@ -347,7 +347,7 @@ trees = "content"
         assert_eq!(unchanged_config, source);
         let typ_path = root.join("content/_lib/kodama.typ");
         let typ_content = std::fs::read_to_string(typ_path.as_std_path()).unwrap();
-        assert_eq!(typ_content, include_str!("../include/kodama.typ"));
+        assert_eq!(typ_content, crate::typst_cli::KODAMA_TYP);
 
         let _ = std::fs::remove_dir_all(root.as_std_path());
     }

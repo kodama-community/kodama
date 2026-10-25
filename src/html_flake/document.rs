@@ -4,8 +4,8 @@
 
 use crate::{cli::serve, environment, html_macro::html};
 
-const MAIN_SCRIPT: &str = include_str!("../include/main.js");
-const MAIN_STYLE: &str = include_str!("../include/main.css");
+static MAIN_SCRIPT: &str = include_str!("../include/main.js");
+static MAIN_STYLE: &str = include_str!("../include/main.css");
 
 pub fn html_doc(
     page_title: &str,

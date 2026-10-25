@@ -13,6 +13,8 @@ use crate::{
     typst_cache::{self, Dependencies, DependencyFile},
 };
 
+pub(crate) static KODAMA_TYP: &str = include_str!("include/kodama.typ");
+
 pub fn write_to_inline_html<P: AsRef<Utf8Path>>(
     typst_path: P,
     html_path: P,
@@ -113,7 +115,7 @@ pub fn source_to_inline_svg(src: &str) -> eyre::Result<String> {
 /// back out afterwards. On failure, the caller is expected to fall back to
 /// [`source_to_inline_svg`] per formula for precise error reporting.
 pub fn source_to_inline_svgs(sources: &[String], shareds: &str) -> eyre::Result<Vec<String>> {
-    let kodama_header = include_str!("include/kodama.typ");
+    let kodama_header = KODAMA_TYP;
     let mut input = format!("{}\n#show: kodama\n{}\n", kodama_header, shareds);
     for source in sources {
         input.push_str(&format!(
@@ -143,7 +145,7 @@ pub fn source_to_inline_svgs(sources: &[String], shareds: &str) -> eyre::Result<
 pub fn source_to_inline_svgs_grouped(
     groups: &[(String, Vec<String>)],
 ) -> eyre::Result<Vec<String>> {
-    let kodama_header = include_str!("include/kodama.typ");
+    let kodama_header = KODAMA_TYP;
     let mut input = format!("{}\n#show: kodama\n", kodama_header);
     for (group_idx, (shareds, sources)) in groups.iter().enumerate() {
         input.push_str(&format!("#let _segment_group_{group_idx}() = {{\n"));

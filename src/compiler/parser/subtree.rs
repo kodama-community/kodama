@@ -167,11 +167,7 @@ fn parse_reference_definition_label(line: &str) -> Option<String> {
 }
 
 fn normalize_reference_label(label: &str) -> String {
-    label
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_ascii_lowercase()
+    label.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn is_reference_definition_continuation(line: &str) -> bool {
@@ -682,6 +678,34 @@ mod tests {
         let html = child.content.as_str().unwrap_or_default();
         assert!(html.contains(r#"href="https://example.com/inner""#));
         assert!(!html.contains(r#"href="https://example.com/outer""#));
+    }
+
+    #[test]
+    fn test_subtree_shared_reference_labels_are_case_sensitive() {
+        let source = r#"
+<remark slug="child">
+
+[Upper][Note] [Lower][note] [Unicode][Straße] [Caps][STRASSE]
+
+</remark>
+
+[Note]: https://example.com/upper
+[note]: https://example.com/lower
+[Straße]: https://example.com/street
+[STRASSE]: https://example.com/caps
+[Note]: https://example.com/duplicate
+"#;
+
+        let extracted = extract_subtrees_root(source, Slug::new("book/index")).unwrap();
+        let shared = extract_shared_reference_definitions(&extracted.root_source);
+        let subtree_source = compose_subtree_source(&extracted.subtrees[0].body, &shared);
+        let child = parse_markdown_source(&subtree_source, extracted.subtrees[0].slug).unwrap();
+        let html = child.content.as_str().unwrap_or_default();
+
+        for path in ["upper", "lower", "street", "caps"] {
+            assert!(html.contains(&format!("href=\"https://example.com/{path}\"")));
+        }
+        assert!(!shared.contains("duplicate"));
     }
 
     #[test]
