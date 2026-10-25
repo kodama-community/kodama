@@ -9,7 +9,7 @@ eyre = { version = "0.6.14", default-features = false, features = ["auto-install
 fastrand = { version = "2.5.0", default-features = false, features = ["std"] }
 htmlize = { version = "1.1.0", features = ["unescape"]}
 internment = { version = "0.8.6", default-features = false, features = ["intern", "serde"] }
-pulldown-cmark = { version = "0.13.5", default-features = false, features = ["html"] }
+pulldown-cmark = { version = "0.13.5", path = "vendor/pulldown-cmark", default-features = false, features = ["html"] }
 pulldown-cmark-escape = "0.11.0"
 regex-lite = { version = "0.1.9", default-features = false, features = ["std", "string"] }
 serde = { version = "1.0.229", default-features = false, features = ["std", "derive"] }

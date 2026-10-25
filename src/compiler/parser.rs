@@ -40,6 +40,7 @@ pub const OPTIONS: Options = Options::ENABLE_MATH
     .union(Options::ENABLE_GFM)
     .union(Options::ENABLE_STRIKETHROUGH)
     .union(Options::ENABLE_TASKLISTS)
+    .union(Options::ENABLE_WIKILINKS)
     .union(Options::ENABLE_DEFINITION_LIST)
     .union(Options::ENABLE_HEADING_ATTRIBUTES);
 
