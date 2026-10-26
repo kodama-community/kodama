@@ -5,7 +5,7 @@
 use crate::{
     compiler::{section::HTMLContent, taxon::Taxon},
     config::build::FooterMode,
-    environment, html_flake,
+    environment, html,
     ordered_map::OrderedMap,
     slug::Slug,
 };
@@ -383,7 +383,7 @@ impl EntryMetaData {
         let show_slug = !self.builtin.internal_anon_subtree;
         let etc = self.etc();
 
-        Ok(html_flake::html_header(html_flake::HtmlHeaderArgs {
+        Ok(html::html_header(html::HtmlHeaderArgs {
             title,
             taxon,
             slug: &slug,

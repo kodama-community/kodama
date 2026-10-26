@@ -9,7 +9,7 @@ use eyre::{eyre, WrapErr};
 use crate::{
     environment,
     slug::{SectionKind, Slug},
-    typst_cache,
+    typst::cache as typst_cache,
 };
 
 use super::section::UnresolvedSection;

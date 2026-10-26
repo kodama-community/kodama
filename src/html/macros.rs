@@ -64,7 +64,7 @@ macro_rules! html_write {
 macro_rules! html {
     ($($args:tt)*) => {{
         use ::std::fmt::Write as _;
-        use $crate::html_macro::html_write;
+        use $crate::html::macros::html_write;
         let mut html = String::new();
         html_write!(html; $($args)*);
         html

@@ -9,11 +9,11 @@ use eyre::{eyre, WrapErr};
 use regex_lite::Regex;
 
 use crate::{
-    environment, html_flake, path_utils,
-    typst_cache::{self, Dependencies, DependencyFile},
+    environment, html, path_utils,
+    typst::cache::{self as typst_cache, Dependencies, DependencyFile},
 };
 
-pub(crate) static KODAMA_TYP: &str = include_str!("include/kodama.typ");
+pub(crate) static KODAMA_TYP: &str = include_str!("../include/kodama.typ");
 
 pub fn write_to_inline_html<P: AsRef<Utf8Path>>(
     typst_path: P,
@@ -103,10 +103,7 @@ pub fn source_to_inline_svg(src: &str) -> eyre::Result<String> {
     let content = source_to_inline_svgs(&[src.to_string()], "")?
         .pop()
         .ok_or_else(|| eyre!("missing inline Typst segment"))?;
-    Ok(format!(
-        "\n{}\n",
-        html_flake::html_inline_typst_span(&content)
-    ))
+    Ok(format!("\n{}\n", html::html_inline_typst_span(&content)))
 }
 
 /// Compile several inline formulas in a single typst invocation.

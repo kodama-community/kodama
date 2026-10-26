@@ -15,8 +15,8 @@ use crate::{
     },
     config,
     environment::{self, BuildMode},
+    markdown::embed_markdown::{include_error_detected, reset_include_error_flag},
     path_utils,
-    process::embed_markdown::{include_error_detected, reset_include_error_flag},
     slug::{self, SectionKind, Slug},
 };
 
@@ -68,7 +68,7 @@ impl Diagnostic {
 
 pub fn check(command: &CheckCommand) -> eyre::Result<()> {
     environment::init_environment(Utf8Path::new(&command.config), BuildMode::Check)?;
-    crate::typst_cache::begin_build();
+    crate::typst::cache::begin_build();
 
     let trees_dir = environment::trees_dir();
     let workspace = compiler::all_trees_source(trees_dir.as_path())

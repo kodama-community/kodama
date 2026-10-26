@@ -12,10 +12,10 @@ use crate::{
     compiler::section::{
         EmbedContent, HTMLContent, LazyContent, LocalLink, TypstFigure, UnresolvedSection,
     },
-    html_flake::html_inline_typst_span,
+    html::html_inline_typst_span,
     slug::Slug,
-    typst_cache::{self, Dependencies},
-    typst_cli,
+    typst::cache::{self as typst_cache, Dependencies},
+    typst::cli as typst_cli,
 };
 
 /// Placeholder token emitted at each inline formula's position while the batch
@@ -53,7 +53,7 @@ thread_local! {
 pub fn begin_inline_batch() {
     INLINE_BATCH.with(|batch| batch.borrow_mut().pending.clear());
     reset_typst_render_error_flag();
-    crate::typst_cache::begin_phase();
+    crate::typst::cache::begin_phase();
 }
 
 /// Register an inline formula and return its global (phase-local) index.

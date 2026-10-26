@@ -14,9 +14,9 @@ use super::UnresolvedSection;
 use crate::{
     entry::{is_plain_metadata, HTMLMetaData, KEY_SLUG, KEY_TAXON, KEY_TITLE},
     environment,
-    process::metadata,
+    markdown::metadata,
     slug::Slug,
-    typst_cli,
+    typst::cli as typst_cli,
 };
 use std::{borrow::Cow, collections::HashSet, str};
 

@@ -5,7 +5,7 @@
 use crate::{
     entry::EntryMetaData,
     environment::{self, input_path},
-    html_macro::html,
+    html::macros::html,
     slug::Slug,
 };
 

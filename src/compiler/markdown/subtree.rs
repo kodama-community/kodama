@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 
 use eyre::{eyre, WrapErr};
 
-use crate::{line_index::LineIndex, process::metadata, slug::Slug};
+use crate::{line_index::LineIndex, markdown::metadata, slug::Slug};
 
 use crate::compiler::{
     anonymous_slug::{anonymous_slug_for, ANON_SUBTREE_ORDINAL_INITIAL},

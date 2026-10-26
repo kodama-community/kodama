@@ -270,11 +270,11 @@ impl CompileState {
 
                             let text = local_link.text.clone().unwrap_or(article_title_html);
 
-                            let html = crate::html_flake::html_link(
+                            let html = crate::html::html_link(
                                 &environment::full_html_url(link_slug),
                                 &format!("{} [{}]", page_title_plain, link_slug),
                                 &text,
-                                crate::recorder::State::LocalLink.strify(),
+                                crate::markdown::link_action::State::LocalLink.strify(),
                             );
                             children.push(SectionContent::Plain(html));
                         }
@@ -456,16 +456,14 @@ fn typst_figure_html(figure: &TypstFigure) -> String {
     let image_src = environment::full_url(&figure.svg_url);
     match figure.kind {
         TypstFigureKind::Span => {
-            crate::html_flake::html_typst_figure(&image_src, false, figure.caption.clone())
+            crate::html::html_typst_figure(&image_src, false, figure.caption.clone())
         }
         TypstFigureKind::Block => {
-            crate::html_flake::html_typst_figure(&image_src, true, figure.caption.clone())
+            crate::html::html_typst_figure(&image_src, true, figure.caption.clone())
         }
-        TypstFigureKind::Code => crate::html_flake::html_figure_code(
-            &image_src,
-            figure.caption.clone(),
-            figure.code.clone(),
-        ),
+        TypstFigureKind::Code => {
+            crate::html::html_figure_code(&image_src, figure.caption.clone(), figure.code.clone())
+        }
     }
 }
 
@@ -746,7 +744,7 @@ mod tests {
             crate::environment::BuildMode::Publish,
             config,
             || {
-                let section = crate::compiler::parser::parse_markdown_source(
+                let section = crate::compiler::markdown::parse_markdown_source(
                     "[](/guide/fig.typ#:block)",
                     Slug::new("guide/index"),
                 )

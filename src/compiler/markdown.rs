@@ -14,7 +14,7 @@ use crate::{
     entry::HTMLMetaData,
     environment,
     environment::input_path,
-    process::{
+    markdown::{
         content::to_contents, embed_markdown::Embed, figure::Figure, filter_raw_html,
         footnote::Footnote, ignore_paragraph, metadata::Metadata, text_elaborator::TextElaborator,
         typst_image::TypstImage,

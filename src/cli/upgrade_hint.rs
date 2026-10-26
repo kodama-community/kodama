@@ -40,7 +40,7 @@ fn check_config_hint() -> eyre::Result<()> {
 
 fn check_kodama_typ_hint() -> eyre::Result<()> {
     let path = environment::trees_dir().join("_lib").join("kodama.typ");
-    let bundled = crate::typst_cli::KODAMA_TYP;
+    let bundled = crate::typst::cli::KODAMA_TYP;
     if check_outdated_with(path.as_path(), "kodama-typ", |content| content == bundled)? {
         color_print::ceprintln!(
             "<y>[upgrade] Hint: Typst library `{}` differs from the version bundled with Kodama.\n<y>  Run `kodama upgrade typst-lib` to sync it.</>",

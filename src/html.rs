@@ -5,6 +5,7 @@
 mod core;
 mod document;
 mod header;
+mod macros;
 
 pub use core::{
     catalog_item, footnote_reference, html_article_inner, html_catalog_block, html_code_block,

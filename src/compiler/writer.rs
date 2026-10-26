@@ -9,7 +9,7 @@ use crate::{
     compiler::counter::Counter,
     config::build::FooterMode,
     environment,
-    html_flake::{self, html_footer_section},
+    html::{self, html_footer_section},
     slug::Slug,
 };
 
@@ -68,7 +68,7 @@ impl Writer {
         let (article_inner, items) =
             Writer::section_to_html(section, &mut counter, true, false, state)?;
         let catalog_html = if items.is_empty().not() {
-            html_flake::html_catalog_block(&items)
+            html::html_catalog_block(&items)
         } else {
             Default::default()
         };
@@ -91,7 +91,7 @@ impl Writer {
         )?;
         let page_title = section.metadata.page_title().unwrap_or("");
 
-        let html = crate::html_flake::html_doc(
+        let html = crate::html::html_doc(
             page_title,
             &html_header,
             &article_inner,
@@ -125,7 +125,7 @@ impl Writer {
         let href = environment::full_html_url(parent);
         let title = section.metadata.title().map_or("", |s| s.as_str());
         let page_title = section.metadata.page_title().unwrap_or("");
-        html_flake::html_header_nav(title, page_title, &href)
+        html::html_header_nav(title, page_title, &href)
     }
 
     fn footer(
@@ -194,7 +194,7 @@ impl Writer {
         } else {
             String::default()
         };
-        Ok(html_flake::html_footer(&references_html, &backlinks_html))
+        Ok(html::html_footer(&references_html, &backlinks_html))
     }
 
     fn sort_footer_slugs(slugs: &mut [Slug], state: &CompileState, footer_sort_by: &str) {
@@ -233,7 +233,7 @@ impl Writer {
         let title = section.metadata.title().map_or("", |s| s.as_str());
         let page_title = section.metadata.page_title().unwrap_or("");
         let use_hash_href = Writer::is_internal_anonymous_subtree(section);
-        Ok(html_flake::catalog_item(
+        Ok(html::catalog_item(
             slug,
             title,
             page_title,
@@ -291,14 +291,7 @@ impl Writer {
                         content,
                     )?);
                 }
-                html_flake::html_article_inner(
-                    &section.metadata,
-                    &contents,
-                    false,
-                    false,
-                    None,
-                    None,
-                )?
+                html::html_article_inner(&section.metadata, &contents, false, false, None, None)?
             }
         };
 
@@ -369,7 +362,7 @@ impl Writer {
                 .unwrap_or(String::new())
         };
 
-        let article_inner = html_flake::html_article_inner(
+        let article_inner = html::html_article_inner(
             &section.metadata,
             &contents,
             hide_metadata,

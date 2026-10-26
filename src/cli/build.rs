@@ -19,7 +19,7 @@ use crate::{
     compiler::{self, all_trees_source, DirtySet},
     config,
     environment::{self, output_path, BuildMode},
-    html_flake,
+    html,
 };
 
 #[derive(clap::Args)]
@@ -95,7 +95,7 @@ pub fn build_with_dirty(
     dirty_paths: Option<&DirtySet>,
 ) -> eyre::Result<()> {
     environment::init_environment(Utf8Path::new(config), mode)?;
-    crate::typst_cache::begin_build();
+    crate::typst::cache::begin_build();
     environment::ensure_cache_version()?;
     _ = VERBOSE.set(options.verbose);
     _ = VERBOSE_SKIP.set(options.verbose_skip);
@@ -128,7 +128,7 @@ pub fn build_with_dirty(
 
 pub fn serve_rewrite_from_memory(config: &str, options: BuildOptions) -> eyre::Result<()> {
     environment::init_environment(Utf8Path::new(config), BuildMode::Serve)?;
-    crate::typst_cache::begin_build();
+    crate::typst::cache::begin_build();
     environment::ensure_cache_version()?;
     _ = VERBOSE.set(options.verbose);
     _ = VERBOSE_SKIP.set(options.verbose_skip);
@@ -218,11 +218,11 @@ fn clear_serve_session() {
 
 fn export_static_files() -> eyre::Result<()> {
     if !environment::inline_css() {
-        sync_css_file(html_flake::html_main_style(), "main.css")?;
+        sync_css_file(html::html_main_style(), "main.css")?;
     }
 
     if !environment::inline_script() {
-        sync_script_file(html_flake::html_main_script(), "main.js")?;
+        sync_script_file(html::html_main_script(), "main.js")?;
     }
 
     Ok(())

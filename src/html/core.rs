@@ -3,7 +3,8 @@
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
 use crate::{
-    compiler::section::HTMLContent, entry::EntryMetaData, environment, html_macro::html, slug::Slug,
+    compiler::section::HTMLContent, entry::EntryMetaData, environment, html::macros::html,
+    slug::Slug,
 };
 
 const CATALOG_BULLET_SYMBOL: &str = "\u{25A0}"; // ■
@@ -150,7 +151,7 @@ pub fn html_link(href: &str, title: &str, text: &str, class_name: &str) -> Strin
     )
 }
 
-/// Also see [`crate::compiler::parser::tests::test_code_block`]
+/// Also see [`crate::compiler::markdown::tests::test_code_block`]
 pub fn html_code_block(code: &str, language: &str) -> String {
     html!(pre { code class={format!("language-{}", language)} { (code) } })
 }

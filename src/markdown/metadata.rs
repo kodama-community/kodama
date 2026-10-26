@@ -3,7 +3,7 @@
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
 use crate::{
-    compiler::{parser::parse_spanned_markdown, section::HTMLContent},
+    compiler::{markdown::parse_spanned_markdown, section::HTMLContent},
     entry::{is_plain_metadata, HTMLMetaData, KEY_TAXON, KEY_TITLE},
     slug::Slug,
 };

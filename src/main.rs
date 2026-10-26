@@ -10,18 +10,15 @@ mod config;
 mod entry;
 mod environment;
 mod footer_sort;
-mod html_flake;
-mod html_macro;
+mod html;
 mod line_index;
+mod markdown;
 mod ordered_map;
 mod path_utils;
-mod process;
-mod recorder;
 mod slug;
 #[cfg(test)]
 mod test_io;
-mod typst_cache;
-mod typst_cli;
+mod typst;
 
 use clap::{
     builder::{

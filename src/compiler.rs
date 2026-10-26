@@ -9,7 +9,7 @@ pub mod counter;
 pub mod custom_tag;
 mod incremental;
 pub mod inline_typst;
-pub mod parser;
+pub mod markdown;
 mod rss;
 pub mod section;
 mod serve_session;
@@ -29,7 +29,7 @@ use std::{
 
 use camino::{Utf8Path, Utf8PathBuf};
 use eyre::{eyre, WrapErr};
-use parser::parse_markdown_sections;
+use markdown::parse_markdown_sections;
 use section::{HTMLContent, UnresolvedSection};
 use serde::{Deserialize, Serialize};
 use typst::parse_typst_sections;
@@ -39,7 +39,7 @@ use crate::{
     entry::HTMLMetaData,
     environment::{self, SourceMeta},
     slug::{SectionKind, Slug},
-    typst_cache::{self, Dependencies},
+    typst::cache::{self as typst_cache, Dependencies},
 };
 
 use self::{

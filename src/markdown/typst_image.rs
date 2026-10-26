@@ -13,15 +13,15 @@ use crate::{
         section::{TypstFigure, TypstFigureKind},
     },
     environment::{self, output_path},
-    recorder::State,
+    markdown::link_action::State,
     slug::Slug,
-    typst_cli::{self, write_to_inline_html},
+    typst::cli::{self as typst_cli, write_to_inline_html},
 };
 
 use super::{
     inline_content::{is_formatting_end, is_formatting_start, warn_unexpected, write_leaf, Escape},
+    link_action::url_action,
     path_resolution::{relocate_trees_path, resolve_section_url},
-    processor::url_action,
 };
 
 pub struct TypstImage<E> {
@@ -413,7 +413,7 @@ mod tests {
     fn test_image_span_caption_collects_inline_content_and_escapes() {
         crate::environment::mock_environment().unwrap();
         let source = "[a <b> *c* `d` $x$](fig.typ#:span)";
-        let events = pulldown_cmark::Parser::new_ext(source, crate::compiler::parser::OPTIONS);
+        let events = pulldown_cmark::Parser::new_ext(source, crate::compiler::markdown::OPTIONS);
         let actual = TypstImage::process(events, Slug::new("index")).collect::<Vec<_>>();
 
         let html = actual

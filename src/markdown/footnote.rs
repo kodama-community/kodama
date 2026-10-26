@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use pulldown_cmark::{Event, Tag};
 
-use crate::{html_flake, slug::Slug};
+use crate::{html, slug::Slug};
 
 pub struct Footnote<E> {
     events: E,
@@ -46,7 +46,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Footnote<E> {
                 let footnote_id = get_footnote_id(self.current_slug, &label);
                 let back_id = get_back_id(self.current_slug, &label);
                 Some(Event::Html(
-                    html_flake::footnote_reference(&footnote_id, &back_id, *number).into(),
+                    html::footnote_reference(&footnote_id, &back_id, *number).into(),
                 ))
             }
             e => e,

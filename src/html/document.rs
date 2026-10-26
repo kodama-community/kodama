@@ -2,7 +2,7 @@
 // Released under the GPL-3.0 license as described in the file LICENSE.
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
-use crate::{cli::serve, environment, html_macro::html};
+use crate::{cli::serve, environment, html::macros::html};
 
 static MAIN_SCRIPT: &str = include_str!("../include/main.js");
 static MAIN_STYLE: &str = include_str!("../include/main.css");
@@ -17,7 +17,7 @@ pub fn html_doc(
     let mut typst_styles = Vec::new();
     let [header_html, article_inner, footer_html, catalog_html] =
         [header_html, article_inner, footer_html, catalog_html]
-            .map(|html| crate::typst_cli::take_typst_styles(html, &mut typst_styles));
+            .map(|html| crate::typst::cli::take_typst_styles(html, &mut typst_styles));
     let mut toc_class: Vec<&str> = vec![];
     if environment::is_toc_sticky() {
         toc_class.push("sticky-nav");

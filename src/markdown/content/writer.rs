@@ -10,8 +10,8 @@ use pulldown_cmark::{
 use pulldown_cmark_escape::{escape_href, escape_html, escape_html_body_text};
 
 use crate::compiler::section::{LazyContent, LazyContents};
-use crate::process::inline_content::{write_leaf, Escape};
-use crate::process::url::{is_allowed_scheme, is_unsafe_scheme, scheme_name};
+use crate::markdown::inline_content::{write_leaf, Escape};
+use crate::markdown::url::{is_allowed_scheme, is_unsafe_scheme, scheme_name};
 
 use super::EventExtended;
 
@@ -185,7 +185,7 @@ where
                 }
                 Html(html) | InlineHtml(html) => {
                     self.ensure_paragraph_started();
-                    if let Some(figure) = crate::process::typst_image::decode_typst_figure(&html) {
+                    if let Some(figure) = crate::markdown::typst_image::decode_typst_figure(&html) {
                         self.contents.push(LazyContent::TypstFigure(figure));
                     } else {
                         self.write(&html);

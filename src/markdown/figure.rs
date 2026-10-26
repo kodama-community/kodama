@@ -113,7 +113,7 @@ mod tests {
     use super::*;
 
     fn collect<'a>(source: &'a str) -> Vec<Event<'a>> {
-        let parser = pulldown_cmark::Parser::new_ext(source, crate::compiler::parser::OPTIONS);
+        let parser = pulldown_cmark::Parser::new_ext(source, crate::compiler::markdown::OPTIONS);
         Figure::process(parser).collect::<Vec<_>>()
     }
 

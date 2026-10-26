@@ -5,8 +5,8 @@
 use super::{
     content::EventExtended,
     inline_content::{is_formatting_end, is_formatting_start, warn_unexpected},
+    link_action::url_action,
     path_resolution::{relocate_trees_path_with_trees_root, resolve_section_url},
-    processor::url_action,
     url::{is_allowed_scheme, is_unsafe_scheme, scheme_name},
 };
 use std::{
@@ -17,10 +17,10 @@ use std::{
 use crate::{
     compiler::section::{EmbedContent, HTMLContent, LocalLink, SectionOption},
     environment::{assets_dir_without_root, root_dir, trees_dir_without_root},
-    html_flake::{html_code_block, html_link},
+    html::{html_code_block, html_link},
+    markdown::link_action::State,
+    markdown::typst_image::is_inline_typst,
     path_utils,
-    process::typst_image::is_inline_typst,
-    recorder::State,
     slug::Slug,
 };
 use camino::Utf8PathBuf;
@@ -412,7 +412,7 @@ fn normalize_path_prefix(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::process::{content::EventExtended, text_elaborator::TextElaborator};
+    use crate::markdown::{content::EventExtended, text_elaborator::TextElaborator};
     use pulldown_cmark::{Event, Parser};
 
     const ASSETS_DIR: &str = "assets";
@@ -520,7 +520,7 @@ mod tests {
     #[test]
     fn test_unsafe_link_is_downgraded_to_plain_text_event() {
         let source = "[click](javascript:alert(1))";
-        let events = Parser::new_ext(source, crate::compiler::parser::OPTIONS);
+        let events = Parser::new_ext(source, crate::compiler::markdown::OPTIONS);
         let events = TextElaborator::process(events);
         let actual = Embed::process_with_roots(
             events,
@@ -544,7 +544,7 @@ mod tests {
     #[test]
     fn test_local_link_keeps_text_elaborator_inline_html_in_link_text() {
         let source = "[中文](./target)";
-        let events = Parser::new_ext(source, crate::compiler::parser::OPTIONS);
+        let events = Parser::new_ext(source, crate::compiler::markdown::OPTIONS);
         let events = TextElaborator::process(events);
         let actual = Embed::process_with_roots(
             events,
@@ -582,7 +582,7 @@ mod tests {
     #[test]
     fn test_asset_link_title_strips_text_elaborator_inline_html() {
         let source = "[中文](/assets/image.png)";
-        let events = Parser::new_ext(source, crate::compiler::parser::OPTIONS);
+        let events = Parser::new_ext(source, crate::compiler::markdown::OPTIONS);
         let events = TextElaborator::process(events);
         let actual = Embed::process_with_roots(
             events,
@@ -611,7 +611,7 @@ mod tests {
     #[test]
     fn test_link_text_soft_break_is_normalized_to_space() {
         let source = "[line one\nline two](./target)";
-        let events = Parser::new_ext(source, crate::compiler::parser::OPTIONS);
+        let events = Parser::new_ext(source, crate::compiler::markdown::OPTIONS);
         let events = TextElaborator::process(events);
         let actual = Embed::process_with_roots(
             events,
@@ -639,7 +639,7 @@ mod tests {
     #[test]
     fn test_link_text_formatting_is_scoped_within_link() {
         let source = "[a *b* c](./target)";
-        let events = Parser::new_ext(source, crate::compiler::parser::OPTIONS);
+        let events = Parser::new_ext(source, crate::compiler::markdown::OPTIONS);
         let events = TextElaborator::process(events);
         let actual = Embed::process_with_roots(
             events,
@@ -669,7 +669,7 @@ mod tests {
     #[test]
     fn test_external_link_text_keeps_formatting() {
         let source = "[**bold**](https://example.com)";
-        let events = Parser::new_ext(source, crate::compiler::parser::OPTIONS);
+        let events = Parser::new_ext(source, crate::compiler::markdown::OPTIONS);
         let events = TextElaborator::process(events);
         let actual = Embed::process_with_roots(
             events,
@@ -693,7 +693,7 @@ mod tests {
     #[test]
     fn test_link_text_inline_math_is_preserved() {
         let source = "[$x$](./target)";
-        let events = Parser::new_ext(source, crate::compiler::parser::OPTIONS);
+        let events = Parser::new_ext(source, crate::compiler::markdown::OPTIONS);
         let events = TextElaborator::process(events);
         let actual = Embed::process_with_roots(
             events,

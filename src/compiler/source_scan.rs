@@ -170,7 +170,7 @@ pub fn sync_typst_svg_assets(trees_dir: &Utf8Path) -> eyre::Result<()> {
 fn compile_typst_svg(trees_dir: &Utf8Path, relative: &Utf8Path) -> eyre::Result<()> {
     let svg_url = relative.with_extension("svg");
     let svg_path = environment::output_path(&svg_url);
-    crate::typst_cli::write_svg(relative, &svg_path)
+    crate::typst::cli::write_svg(relative, &svg_path)
         .wrap_err_with(|| eyre!("failed to compile Typst SVG `{}`", trees_dir.join(relative)))
 }
 

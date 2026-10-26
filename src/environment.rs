@@ -14,9 +14,9 @@ use crate::{
 
 mod cache;
 mod config_access;
-mod hashing;
 mod imports;
 mod paths;
+mod source_meta;
 
 pub use cache::ensure_cache_version;
 pub use config_access::{
@@ -29,12 +29,12 @@ pub use config_access::{
     serve_port, suffix_for_kind, theme_lock, theme_paths, toc_max_width, trees_dir,
     trees_dir_without_root, typst_root_dir, typst_suffix,
 };
-pub use hashing::{relative_source_meta, source_meta_of, SourceMeta};
 pub use imports::{import_fonts_html, import_math_html, import_meta_html, import_style_html};
 pub use paths::{
     create_parent_dirs, entry_dir, entry_file_path, full_html_url, full_url, hash_dir,
     hash_file_path, input_path, output_path,
 };
+pub use source_meta::{relative_source_meta, source_meta_of, SourceMeta};
 
 pub struct Environment {
     /// Specifies the project root path.
