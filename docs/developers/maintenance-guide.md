@@ -112,17 +112,17 @@ Any output change should be tested with unchanged-output cases as well as change
 
 ## Serve Mode
 
-Serve mode has additional constraints because it combines file watching, an external server process, live reload, caches, and in-memory compiler state.
+Serve mode has additional constraints because it combines file watching, a local static server (built-in or external), live reload, caches, and in-memory compiler state.
 
 When changing serve behavior:
 
 - Distinguish source changes from global changes.
-- Restart the external server when config changes can affect the server command.
+- Restart the server when config changes can affect the server command.
 - Reuse in-memory state only when it is still semantically valid.
 - Keep live reload optional.
 - Preserve the lighter default artifact set unless there is a strong user-facing reason to change it.
 
-Watch behavior should remain conservative. Unknown source-tree dependencies should broaden the dirty set rather than risk stale output. Config changes should restart the external server because the command, output path, edit URL, base URL, and runtime import policy can all change. Asset-only changes should not force a full source parse unless they also affect authored source semantics.
+Watch behavior should remain conservative. Unknown source-tree dependencies should broaden the dirty set rather than risk stale output. Config changes should restart the server because the command, output path, edit URL, base URL, and runtime import policy can all change. Asset-only changes should not force a full source parse unless they also affect authored source semantics.
 
 ## Caching
 

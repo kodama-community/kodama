@@ -31,12 +31,14 @@ pub struct BuiltinServer {
 }
 
 impl BuiltinServer {
-    /// Bind a listener on `127.0.0.1` (incrementing the port until one is
-    /// free) and start serving the current output directory in a background
-    /// thread. The banner is printed later via [`BuiltinServer::banner`] so it
-    /// appears after the watch setup messages.
-    pub fn spawn() -> eyre::Result<Self> {
-        Self::spawn_with_listener(bind_listener()?, environment::output_dir())
+    /// Bind a listener on `127.0.0.1` and start serving the current output
+    /// directory in a background thread. A `None` port scans upward from
+    /// [`DEFAULT_PORT`] for a free port; `Some(port)` binds that port exactly,
+    /// with `0` asking the operating system to choose one. The banner is
+    /// printed later via [`BuiltinServer::banner`] so it appears after the
+    /// watch setup messages.
+    pub fn spawn(port: Option<u16>) -> eyre::Result<Self> {
+        Self::spawn_with_listener(bind(port)?, environment::output_dir())
     }
 
     fn spawn_with_listener(listener: TcpListener, output_dir: Utf8PathBuf) -> eyre::Result<Self> {
@@ -73,6 +75,22 @@ impl BuiltinServer {
             let _ = thread.join();
         }
     }
+}
+
+fn bind(port: Option<u16>) -> eyre::Result<TcpListener> {
+    match port {
+        Some(port) => bind_exact(port),
+        None => bind_listener(),
+    }
+}
+
+/// Bind a user-requested port exactly, reporting the address on failure.
+fn bind_exact(port: u16) -> eyre::Result<TcpListener> {
+    TcpListener::bind(("127.0.0.1", port)).map_err(|err| {
+        eyre!(
+            "failed to bind 127.0.0.1:{port} for the built-in server (is the port already in use?): {err}"
+        )
+    })
 }
 
 fn bind_listener() -> eyre::Result<TcpListener> {
@@ -538,5 +556,20 @@ mod tests {
             );
         }
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_fixed_port_already_in_use_is_reported() {
+        let occupied = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = occupied.local_addr().unwrap().port();
+
+        let err = bind(Some(port)).unwrap_err();
+        assert!(err.to_string().contains(&format!("127.0.0.1:{port}")));
+    }
+
+    #[test]
+    fn test_port_zero_asks_the_os_for_a_port() {
+        let listener = bind(Some(0)).unwrap();
+        assert_ne!(listener.local_addr().unwrap().port(), 0);
     }
 }

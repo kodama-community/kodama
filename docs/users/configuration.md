@@ -113,14 +113,21 @@ edit = "https://example.com/edit/"
 [serve]
 edit = "vscode://file/"
 output = "./.cache/publish"
-command = ["miniserve", "<output>", "--index", "index.html", "--pretty-urls"]
 ```
 
 - `edit`: edit URL prefix for local preview.
 - `output`: output directory used by `kodama serve`.
-- `command`: server command and arguments. The literal `<output>` is replaced with the serve output directory.
+- `port`: port for the built-in server. When omitted, the server binds the first free port from 8080; `0` asks the operating system to choose a port. If the requested port is already in use, `kodama serve` fails. Only valid when `command` is empty.
+- `command`: optional external server command and arguments. The literal `<output>` is replaced with the serve output directory.
 
-The default command expects `miniserve` to be installed. You can replace it with any static server command that serves the output directory.
+When `command` is omitted, `kodama serve` uses a built-in HTTP server bound to `127.0.0.1`. It serves `index.html` for directory requests and falls back to `<path>.html` for extensionless paths, matching `pretty-urls` output. To use an external server instead, set a command that serves the output directory:
+
+```toml
+[serve]
+command = ["miniserve", "<output>", "--index", "index.html", "--pretty-urls", "--port", "8087"]
+```
+
+The external command owns its own port; setting `port` alongside `command` is rejected.
 
 ## `[publish]`
 

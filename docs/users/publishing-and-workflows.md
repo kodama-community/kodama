@@ -46,7 +46,7 @@ Enable pretty URLs when your host maps extensionless paths to generated HTML pag
 pretty-urls = true
 ```
 
-For local preview, make sure the configured static server command supports the same URL style.
+For local preview, the built-in server resolves extensionless paths to `<path>.html` automatically. If you configure an external server command, make sure it supports the same URL style.
 
 ## Cache and Incremental Builds
 

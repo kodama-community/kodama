@@ -46,7 +46,7 @@ pub struct ServeCommand {
     #[arg(short, long, default_value_t = false)]
     watch_stats: bool,
 
-    /// Build and watch serve output without starting the configured static server.
+    /// Build and watch serve output without starting the static server (built-in or external).
     #[arg(long, default_value_t = false)]
     no_server: bool,
 

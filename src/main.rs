@@ -85,7 +85,9 @@ enum Command {
     ///
     /// Does not emit "kodama.json" / "kodama.graph.json" by default.
     ///
-    /// Server by default depends on the miniserve program in the user's environment.
+    /// Uses a built-in HTTP server by default (port from `[serve].port`, or
+    /// the first free port from 8080); set `[serve].command` to run an
+    /// external server such as miniserve instead.
     /// Also see the configuration file (e.g., "Kodama.toml").
     #[command(visible_alias = "s")]
     Serve(ServeCommand),
