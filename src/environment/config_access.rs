@@ -187,6 +187,10 @@ pub fn serve_command() -> Vec<String> {
     with_config(|cfg| cfg.serve.command.clone())
 }
 
+pub fn serve_port() -> Option<u16> {
+    with_config(|cfg| cfg.serve.port)
+}
+
 pub fn get_cache_dir() -> Utf8PathBuf {
     super::derived_snapshot().cache_dir.clone()
 }

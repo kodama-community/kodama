@@ -97,7 +97,9 @@ Alias: `kodama c`.
 kodama serve
 ```
 
-Builds the site into the serve output directory, starts the configured static server (unless `--no-server` is used), watches source/config/theme/assets files, and rebuilds on changes.
+Builds the site into the serve output directory, starts a static server (built-in unless `[serve].command` selects an external one, or skipped with `--no-server`), watches source/config/theme/assets files, and rebuilds on changes.
+
+The built-in server listens on `127.0.0.1`; set `[serve].port` to pin its port, otherwise it uses the first free port from 8080.
 
 Options:
 
@@ -106,7 +108,7 @@ Options:
 - `--verbose-skip`: print skip output.
 - `--disable-reload`, short `-d`: disable live reload.
 - `--watch-stats`, short `-w`: print dirty-path analysis for each watch batch.
-- `--no-server`: build and watch the site without starting the configured static server. Useful for headless watch-only workflows.
+- `--no-server`: build and watch the site without starting any static server. Useful for headless watch-only workflows.
 - `--print-json`: emit line-delimited JSON events (`ready`, `rebuilt`) on stdout for editor and tooling integrations. Requires `--no-server` so stdout stays machine-readable; terminal escape sequences and watch status messages are suppressed while active.
 - `--indexes`: generate `kodama.json` during serve.
 - `--no-indexes`: skip `kodama.json`.

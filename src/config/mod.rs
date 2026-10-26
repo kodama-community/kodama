@@ -224,6 +224,7 @@ mod test {
     fn test_empty_serve_section_uses_defaults() {
         let config = crate::config::parse_config("[serve]").unwrap();
         assert_eq!(config.serve.output, "./.cache/publish");
+        assert!(config.serve.port.is_none());
         assert!(config.serve.command.is_empty());
     }
 
@@ -231,7 +232,19 @@ mod test {
     fn test_partial_serve_section_defaults_missing_fields() {
         let config = crate::config::parse_config("[serve]\noutput = \"./site\"").unwrap();
         assert_eq!(config.serve.output, "./site");
+        assert!(config.serve.port.is_none());
         assert!(config.serve.command.is_empty());
+    }
+
+    #[test]
+    fn test_serve_port_is_parsed() {
+        let config = crate::config::parse_config("[serve]\nport = 4321").unwrap();
+        assert_eq!(config.serve.port, Some(4321));
+    }
+
+    #[test]
+    fn test_serve_port_out_of_range_is_rejected() {
+        assert!(crate::config::parse_config("[serve]\nport = 70000").is_err());
     }
 
     #[test]

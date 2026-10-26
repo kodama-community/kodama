@@ -3,6 +3,7 @@
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
 use camino::Utf8Path;
+use eyre::eyre;
 
 use crate::environment;
 
@@ -86,8 +87,13 @@ fn spawn_external(command: &[String]) -> eyre::Result<std::process::Child> {
 
 pub(super) fn spawn_serve_process() -> eyre::Result<ServeHandle> {
     let command = environment::serve_command();
+    let port = environment::serve_port();
     if command.is_empty() {
-        Ok(ServeHandle::Builtin(BuiltinServer::spawn()?))
+        Ok(ServeHandle::Builtin(BuiltinServer::spawn(port)?))
+    } else if port.is_some() {
+        Err(eyre!(
+            "`serve.port` only applies to the built-in server; set the port in `serve.command` for an external server"
+        ))
     } else {
         Ok(ServeHandle::External(spawn_external(&command)?))
     }

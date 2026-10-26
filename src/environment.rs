@@ -26,8 +26,8 @@ pub use config_access::{
     get_footer_references_text, get_toc_text, graph_path, indexes_path, inline_css, inline_script,
     is_short_slug, is_toc_left, is_toc_mobile_sticky, is_toc_sticky, kind_from_extension,
     markdown_suffix, output_dir, pretty_urls, publish_rss, reload_marker_path, serve_command,
-    suffix_for_kind, theme_lock, theme_paths, toc_max_width, trees_dir, trees_dir_without_root,
-    typst_root_dir, typst_suffix,
+    serve_port, suffix_for_kind, theme_lock, theme_paths, toc_max_width, trees_dir,
+    trees_dir_without_root, typst_root_dir, typst_suffix,
 };
 pub use hashing::{relative_source_meta, source_meta_of, SourceMeta};
 pub use imports::{import_fonts_html, import_math_html, import_meta_html, import_style_html};

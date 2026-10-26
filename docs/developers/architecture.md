@@ -78,11 +78,11 @@ Check mode does not write build artifacts.
 
 ### Serve
 
-Serve mode performs an initial build into the serve output directory, optionally starts the configured static server, watches source, asset, config, theme, and import paths, then decides whether each change batch requires an incremental source rebuild, a global rewrite from memory, or a server restart.
+Serve mode performs an initial build into the serve output directory, optionally starts a static server (the built-in HTTP server by default, or the external command from `[serve].command`), watches source, asset, config, theme, and import paths, then decides whether each change batch requires an incremental source rebuild, a global rewrite from memory, or a server restart. The built-in server binds `[serve].port` when configured and otherwise scans upward from 8080; `port` is rejected when an external command is configured.
 
 Serve mode defaults metadata and graph JSON off to keep preview output lightweight. It can enable them through output flags.
 
-Serve mode can run headlessly with `--no-server`, which builds and watches without spawning the configured static server process. `--print-json` requires `--no-server` and emits line-delimited JSON events (`ready`, `rebuilt`) on stdout for editor and tooling integrations, suppressing terminal escape sequences and watch status messages.
+Serve mode can run headlessly with `--no-server`, which builds and watches without starting the static server (built-in or external). `--print-json` requires `--no-server` and emits line-delimited JSON events (`ready`, `rebuilt`) on stdout for editor and tooling integrations, suppressing terminal escape sequences and watch status messages.
 
 ### Scaffolding and Upgrade
 
@@ -265,7 +265,7 @@ After graph compilation, dirty source slugs are expanded to affected output slug
 
 If stale slugs are detected because source files disappeared or changed ownership, Kodama writes all visible pages from the current graph to ensure navigation and footers converge to the new state.
 
-Serve mode keeps a compile session in memory. Source changes update the session incrementally when possible. Global changes, such as theme or import changes, can reuse the in-memory graph and rewrite all pages. Config changes trigger a full build and server restart because configuration can affect paths, URL policy, runtime imports, and the external server command.
+Serve mode keeps a compile session in memory. Source changes update the session incrementally when possible. Global changes, such as theme or import changes, can reuse the in-memory graph and rewrite all pages. Config changes trigger a full build and server restart because configuration can affect paths, URL policy, runtime imports, and the configured server command.
 
 ## Safety Model
 
