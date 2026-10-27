@@ -10,12 +10,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use eyre::{eyre, WrapErr};
 
 use crate::{
     assets_sync, atomic_text,
-    cli::output::OutputControlArgs,
+    cli::{config_arg, output::OutputControlArgs},
     compiler::{self, all_trees_source, DirtySet},
     config,
     environment::{self, output_path, BuildMode},
@@ -24,9 +24,16 @@ use crate::{
 
 #[derive(clap::Args)]
 pub struct BuildCommand {
-    /// Path to the configuration file (e.g., "Kodama.toml").
-    #[arg(short, long, default_value_t = config::DEFAULT_CONFIG_PATH.into())]
-    config: String,
+    /// Path to the configuration file (default: ./Kodama.toml).
+    #[arg(short, long, conflicts_with = "no_config")]
+    config: Option<Utf8PathBuf>,
+
+    /// Build with built-in defaults instead of a configuration file.
+    ///
+    /// The current directory must contain a `trees` directory; without a config
+    /// file the directory layout is the only description of the site.
+    #[arg(long, default_value_t = false)]
+    no_config: bool,
 
     /// Enable verbose output.
     #[arg(short, long, default_value_t = false)]
@@ -73,7 +80,7 @@ pub fn no_cache_enabled() -> &'static bool {
 /// This function invoked the [`environment::init_environment`] function to initialize the environment
 pub fn build(command: &BuildCommand) -> eyre::Result<()> {
     build_with(
-        &config::ConfigSource::file(command.config.as_str()),
+        &config_arg::resolve(command.config.as_ref(), command.no_config)?,
         BuildMode::Publish,
         BuildOptions {
             verbose: command.verbose,

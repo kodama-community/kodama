@@ -1,6 +1,10 @@
 // Copyright (c) 2025 Kodama Project. All rights reserved.
 // Released under the GPL-3.0 license as described in the file LICENSE.
 
+// `Site` is shared by several integration test binaries, so not every helper is
+// used by each of them.
+#![allow(dead_code)]
+
 use std::{
     fs,
     path::PathBuf,

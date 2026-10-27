@@ -4,15 +4,16 @@
 
 use std::collections::{HashMap, HashSet};
 
+use camino::Utf8PathBuf;
 use eyre::{bail, eyre, WrapErr};
 
 use crate::{
+    cli::config_arg,
     compiler::inline_typst::{self, reset_typst_render_error_flag, typst_render_error_detected},
     compiler::{
         self,
         section::{HTMLContent, LazyContent, UnresolvedSection},
     },
-    config,
     environment::{self, BuildMode},
     markdown::embed_markdown::{include_error_detected, reset_include_error_flag},
     path_utils,
@@ -21,9 +22,15 @@ use crate::{
 
 #[derive(clap::Args)]
 pub struct CheckCommand {
-    /// Path to the configuration file (e.g., "Kodama.toml").
-    #[arg(short, long, default_value_t = config::DEFAULT_CONFIG_PATH.into())]
-    config: String,
+    /// Path to the configuration file (default: ./Kodama.toml).
+    #[arg(short, long, conflicts_with = "no_config")]
+    config: Option<Utf8PathBuf>,
+
+    /// Check with built-in defaults instead of a configuration file.
+    ///
+    /// The current directory must contain a `trees` directory.
+    #[arg(long, default_value_t = false)]
+    no_config: bool,
 
     /// Treat warnings as errors.
     #[arg(long, default_value_t = false)]
@@ -67,7 +74,7 @@ impl Diagnostic {
 
 pub fn check(command: &CheckCommand) -> eyre::Result<()> {
     environment::init_environment(
-        &config::ConfigSource::file(command.config.as_str()),
+        &config_arg::resolve(command.config.as_ref(), command.no_config)?,
         BuildMode::Check,
     )?;
     crate::typst::cache::begin_build();

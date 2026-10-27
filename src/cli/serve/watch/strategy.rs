@@ -247,6 +247,22 @@ mod tests {
     }
 
     #[test]
+    fn test_compose_watched_paths_without_a_config_file_skips_it() {
+        let root = Utf8PathBuf::from("site");
+
+        let watched = compose_watched_paths(
+            root.as_path(),
+            root.join("trees"),
+            root.join("assets"),
+            None,
+            vec![],
+        );
+
+        assert_eq!(watched.len(), 6);
+        assert!(!watched.iter().any(|path| path.ends_with("Kodama.toml")));
+    }
+
+    #[test]
     fn test_should_handle_watch_event_kinds() {
         assert!(should_handle_watch_event(&EventKind::Any));
         assert!(should_handle_watch_event(&EventKind::Modify(

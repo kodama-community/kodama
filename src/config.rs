@@ -32,11 +32,20 @@ pub enum ConfigSource {
     /// Read the configuration file at this path. The path must exist, and its
     /// directory becomes the project root.
     File(Utf8PathBuf),
+
+    /// Use built-in defaults with this directory as the project root. No
+    /// configuration file is read, so the site is described entirely by the
+    /// directory layout.
+    Defaults(Utf8PathBuf),
 }
 
 impl ConfigSource {
     pub fn file(path: impl Into<Utf8PathBuf>) -> Self {
         Self::File(path.into())
+    }
+
+    pub fn defaults(root: impl Into<Utf8PathBuf>) -> Self {
+        Self::Defaults(root.into())
     }
 }
 

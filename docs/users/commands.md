@@ -66,6 +66,7 @@ Compiles the current site into the publish output directory.
 Options:
 
 - `--config <path>`, short `-c`: configuration file.
+- `--no-config`: ignore any configuration file and use the built-in defaults; requires a `trees` directory in the current directory.
 - `--verbose`, short `-v`: print build output.
 - `--verbose-skip`: print skip output.
 - `--no-cache`, alias `--nc`: rebuild all files without using caches.
@@ -87,6 +88,7 @@ Validates the site without generating build artifacts.
 Options:
 
 - `--config <path>`, short `-c`: configuration file.
+- `--no-config`: ignore any configuration file and use the built-in defaults; requires a `trees` directory in the current directory.
 - `--strict`: treat warnings as errors.
 
 Alias: `kodama c`.
@@ -104,6 +106,7 @@ The built-in server listens on `127.0.0.1`; set `[serve].port` to pin its port, 
 Options:
 
 - `--config <path>`, short `-c`: configuration file.
+- `--no-config`: ignore any configuration file and use the built-in defaults; requires a `trees` directory in the current directory.
 - `--verbose`, short `-v`: print build output.
 - `--verbose-skip`: print skip output.
 - `--disable-reload`, short `-d`: disable live reload.

@@ -231,6 +231,27 @@ pub fn init_environment(source: &config::ConfigSource, build_mode: BuildMode) ->
                 build_mode,
             });
         }
+        config::ConfigSource::Defaults(root) => {
+            let config = Config::default();
+            // Without a config file the directory layout is the only description
+            // of the site, so refuse to write output next to directories that do
+            // not look like a site at all.
+            let trees_dir = root.join(&config.kodama.trees);
+            if !trees_dir.is_dir() {
+                return Err(eyre!(
+                    "cannot use built-in defaults: `{}` does not exist\n\
+                     Run from a site directory, or pass a configuration file with `--config <path>`.",
+                    trees_dir
+                ));
+            }
+
+            update_environment(Environment {
+                root: root.to_owned(),
+                config_file: None,
+                config,
+                build_mode,
+            });
+        }
     }
     Ok(())
 }
@@ -307,9 +328,45 @@ pub fn mock_environment() -> eyre::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::sync::{Arc, RwLock};
 
     use super::*;
+
+    #[test]
+    fn test_defaults_source_needs_no_config_file() {
+        let root = crate::test_io::case_dir("env-defaults-source");
+        fs::create_dir_all(root.join("trees").as_std_path()).unwrap();
+
+        with_test_environment(root.clone(), BuildMode::Publish, || {
+            init_environment(
+                &crate::config::ConfigSource::defaults(root.clone()),
+                BuildMode::Serve,
+            )
+            .unwrap();
+
+            assert_eq!(config_file(), None);
+            assert_eq!(root_dir(), root);
+            assert_eq!(output_dir(), root.join("./.cache/publish"));
+        });
+
+        let _ = fs::remove_dir_all(root.as_std_path());
+    }
+
+    #[test]
+    fn test_defaults_source_requires_a_trees_directory() {
+        let root = crate::test_io::case_dir("env-defaults-no-trees");
+        fs::create_dir_all(root.as_std_path()).unwrap();
+
+        let err = init_environment(
+            &crate::config::ConfigSource::defaults(root.clone()),
+            BuildMode::Publish,
+        )
+        .expect_err("defaults without a trees directory must be rejected");
+        assert!(format!("{err}").contains("trees"), "{err}");
+
+        let _ = fs::remove_dir_all(root.as_std_path());
+    }
 
     fn poison_read_lock(lock: Arc<RwLock<Environment>>) {
         let _ = std::thread::spawn(move || {

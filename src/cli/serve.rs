@@ -4,13 +4,14 @@
 
 use std::{io::Write, sync::OnceLock};
 
+use camino::Utf8PathBuf;
 use eyre::eyre;
 
 use crate::{
     cli::build::{build_with_dirty, serve_rewrite_from_memory, BuildOptions},
+    cli::config_arg,
     cli::output::OutputControlArgs,
     compiler::{CompileOutputs, DirtySet},
-    config,
     environment::{self, BuildMode},
 };
 
@@ -26,9 +27,16 @@ use watch::{
 
 #[derive(clap::Args)]
 pub struct ServeCommand {
-    /// Path to the configuration file (e.g., "Kodama.toml").
-    #[arg(short, long, default_value_t = config::DEFAULT_CONFIG_PATH.into())]
-    config: String,
+    /// Path to the configuration file (default: ./Kodama.toml).
+    #[arg(short, long, conflicts_with = "no_config")]
+    config: Option<Utf8PathBuf>,
+
+    /// Serve with built-in defaults instead of a configuration file.
+    ///
+    /// The current directory must contain a `trees` directory. `[serve]` options
+    /// such as a fixed port therefore come from the defaults, not from a file.
+    #[arg(long, default_value_t = false)]
+    no_config: bool,
 
     /// Enable verbose output.
     #[arg(short, long, default_value_t = false)]
@@ -94,7 +102,7 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
     }
 
     _ = LIVE_RELOAD.set(!command.disable_reload);
-    let source = config::ConfigSource::file(command.config.as_str());
+    let source = config_arg::resolve(command.config.as_ref(), command.no_config)?;
     let outputs = compile_outputs(command);
     let watch_stats = command.watch_stats;
     let print_json = command.print_json;
@@ -251,7 +259,8 @@ mod tests {
     #[test]
     fn test_compile_outputs_default_to_disabled_in_serve() {
         let command = ServeCommand {
-            config: config::DEFAULT_CONFIG_PATH.into(),
+            config: None,
+            no_config: false,
             verbose: false,
             verbose_skip: false,
             disable_reload: false,
@@ -268,7 +277,8 @@ mod tests {
     #[test]
     fn test_compile_outputs_can_be_enabled_in_serve() {
         let command = ServeCommand {
-            config: config::DEFAULT_CONFIG_PATH.into(),
+            config: None,
+            no_config: false,
             verbose: false,
             verbose_skip: false,
             disable_reload: false,
@@ -290,7 +300,8 @@ mod tests {
     #[test]
     fn test_compile_outputs_can_be_disabled_with_compat_flags_in_serve() {
         let command = ServeCommand {
-            config: config::DEFAULT_CONFIG_PATH.into(),
+            config: None,
+            no_config: false,
             verbose: false,
             verbose_skip: false,
             disable_reload: false,

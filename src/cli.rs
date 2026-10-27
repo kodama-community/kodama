@@ -4,6 +4,7 @@
 
 pub mod build;
 pub mod check;
+pub mod config_arg;
 pub mod init;
 pub mod new;
 pub mod output;
