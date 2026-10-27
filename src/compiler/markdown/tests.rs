@@ -96,7 +96,7 @@ allow-unsafe-html = true
         crate::environment::BuildMode::Publish,
         || {
             crate::environment::init_environment(
-                config_path.as_path(),
+                &crate::config::ConfigSource::file(config_path.as_path()),
                 crate::environment::BuildMode::Publish,
             )
             .unwrap();

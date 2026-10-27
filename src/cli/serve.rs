@@ -76,7 +76,7 @@ fn print_preview_event(event: &str) -> eyre::Result<()> {
     let payload = serde_json::json!({
         "event": event,
         "root": environment::root_dir().as_str(),
-        "config": environment::config_file().as_str(),
+        "config": environment::config_file().map(|path| path.to_string()),
         "output": output_dir.as_str(),
         "reload": environment::reload_marker_path(output_dir.as_path()).as_str(),
     });
@@ -94,6 +94,7 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
     }
 
     _ = LIVE_RELOAD.set(!command.disable_reload);
+    let source = config::ConfigSource::file(command.config.as_str());
     let outputs = compile_outputs(command);
     let watch_stats = command.watch_stats;
     let print_json = command.print_json;
@@ -105,25 +106,22 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
     };
 
     let serve_build = |dirty_paths: Option<&DirtySet>| -> eyre::Result<()> {
-        build_with_dirty(
-            &command.config,
-            BuildMode::Serve,
-            build_options,
-            dirty_paths,
-        )?;
+        build_with_dirty(&source, BuildMode::Serve, build_options, dirty_paths)?;
         Ok(())
     };
 
     let serve_rewrite = || -> eyre::Result<()> {
-        serve_rewrite_from_memory(&command.config, build_options)?;
+        serve_rewrite_from_memory(&source, build_options)?;
         Ok(())
     };
 
     serve_build(None)?;
-    let config_file = environment::config_file();
-    let config_file_canonical = config_file
-        .canonicalize_utf8()
-        .unwrap_or_else(|_| config_file.clone());
+    let config_watch = environment::config_file().map(|config_file| {
+        let canonical = config_file
+            .canonicalize_utf8()
+            .unwrap_or_else(|_| config_file.clone());
+        (config_file, canonical)
+    });
 
     if !print_json {
         print!("\x1B[2J\x1B[H");
@@ -153,7 +151,9 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
         root_dir.as_path(),
         trees_dir.clone(),
         assets_dir.clone(),
-        config_file.clone(),
+        config_watch
+            .as_ref()
+            .map(|(config_file, _)| config_file.clone()),
         crate::environment::theme_paths(),
     );
     watch_paths(
@@ -181,13 +181,18 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
                 color_print::ceprintln!("<dim>{}</>", format_watch_change_stats(analysis.stats));
             }
 
-            let should_restart = changed_paths.iter().any(|changed_path| {
-                should_restart_for_config_change(
-                    changed_path.as_path(),
-                    config_file.as_path(),
-                    config_file_canonical.as_path(),
-                )
-            });
+            let should_restart =
+                config_watch
+                    .as_ref()
+                    .is_some_and(|(config_file, config_file_canonical)| {
+                        changed_paths.iter().any(|changed_path| {
+                            should_restart_for_config_change(
+                                changed_path.as_path(),
+                                config_file.as_path(),
+                                config_file_canonical.as_path(),
+                            )
+                        })
+                    });
 
             if should_restart {
                 // Config changes can alter compiler behavior globally; do a full build.

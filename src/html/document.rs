@@ -228,8 +228,11 @@ theme-lock = true
         .unwrap();
 
         environment::with_test_environment(root.clone(), environment::BuildMode::Publish, || {
-            environment::init_environment(config_path.as_path(), environment::BuildMode::Publish)
-                .unwrap();
+            environment::init_environment(
+                &crate::config::ConfigSource::file(config_path.as_path()),
+                environment::BuildMode::Publish,
+            )
+            .unwrap();
 
             let css = html_dynamic_css();
             assert!(css.contains("#theme-options { display: none; }"));

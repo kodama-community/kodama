@@ -28,7 +28,9 @@ fn check_upgrade_hints_inner() -> eyre::Result<()> {
 }
 
 fn check_config_hint() -> eyre::Result<()> {
-    let path = environment::config_file();
+    let Some(path) = environment::config_file() else {
+        return Ok(());
+    };
     if check_outdated_with(path.as_path(), "config", is_config_up_to_date)? {
         color_print::ceprintln!(
             "<y>[upgrade] Hint: config file `{}` is missing configuration introduced by this version.\n<y>  Run `kodama upgrade config` to update it.</>",

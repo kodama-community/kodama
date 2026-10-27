@@ -67,7 +67,10 @@ pub fn snip(command: &SnipCommand) -> eyre::Result<()> {
         .or_else(|| command.section.then_some(config::DEFAULT_CONFIG_PATH));
 
     let root = if let Some(path) = config_path {
-        environment::init_environment(Utf8Path::new(path), environment::BuildMode::Serve)?;
+        environment::init_environment(
+            &config::ConfigSource::file(path),
+            environment::BuildMode::Serve,
+        )?;
         environment::root_dir()
     } else {
         Utf8PathBuf::from(".")

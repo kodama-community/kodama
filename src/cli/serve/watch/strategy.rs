@@ -103,18 +103,17 @@ pub(in crate::cli::serve) fn compose_watched_paths(
     root_dir: &Utf8Path,
     trees_dir: Utf8PathBuf,
     assets_dir: Utf8PathBuf,
-    config_file: Utf8PathBuf,
+    config_file: Option<Utf8PathBuf>,
     theme_paths: Vec<Utf8PathBuf>,
 ) -> Vec<Utf8PathBuf> {
-    let mut watched_paths = vec![
-        trees_dir,
-        assets_dir,
-        config_file,
+    let mut watched_paths = vec![trees_dir, assets_dir];
+    watched_paths.extend(config_file);
+    watched_paths.extend([
         root_dir.join("import-meta.html"),
         root_dir.join("import-style.html"),
         root_dir.join("import-font.html"),
         root_dir.join("import-math.html"),
-    ];
+    ]);
     watched_paths.extend(theme_paths);
     watched_paths
 }
@@ -233,7 +232,7 @@ mod tests {
             root.as_path(),
             trees.clone(),
             assets.clone(),
-            config.clone(),
+            Some(config.clone()),
             vec![theme.clone()],
         );
 

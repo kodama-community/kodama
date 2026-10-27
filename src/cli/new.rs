@@ -195,7 +195,10 @@ fn new_section_inner(
     template: &str,
     config: &Utf8Path,
 ) -> eyre::Result<()> {
-    environment::init_environment(config, environment::BuildMode::Publish)?;
+    environment::init_environment(
+        &config::ConfigSource::file(config),
+        environment::BuildMode::Publish,
+    )?;
 
     let (section_relative_path, section_ext) = normalize_new_section_path(path, format)?;
     let section_relative_path = strip_new_post_tree_prefix(

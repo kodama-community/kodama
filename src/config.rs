@@ -22,6 +22,24 @@ use toc::Toc;
 
 pub const DEFAULT_CONFIG_PATH: &str = "./Kodama.toml";
 
+/// Where a project command takes its configuration from.
+///
+/// The source decides both the configuration values and the project root, so it
+/// is resolved once per command invocation and carried through the build and
+/// serve pipelines instead of a bare config path.
+#[derive(Debug, Clone)]
+pub enum ConfigSource {
+    /// Read the configuration file at this path. The path must exist, and its
+    /// directory becomes the project root.
+    File(Utf8PathBuf),
+}
+
+impl ConfigSource {
+    pub fn file(path: impl Into<Utf8PathBuf>) -> Self {
+        Self::File(path.into())
+    }
+}
+
 #[derive(Deserialize, Debug, Default, Serialize)]
 pub struct Config {
     #[serde(default)]

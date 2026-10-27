@@ -4,7 +4,7 @@
 
 use std::sync::{Arc, LazyLock, OnceLock, RwLock};
 
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8PathBuf;
 use eyre::eyre;
 
 use crate::{
@@ -42,7 +42,9 @@ pub struct Environment {
     /// Please note that this value should always be automatically derived from
     /// the location of the toml configuration file.
     pub root: Utf8PathBuf,
-    pub config_file: Utf8PathBuf,
+    /// The configuration file in use, when the project was configured from a
+    /// file rather than from built-in defaults.
+    pub config_file: Option<Utf8PathBuf>,
     pub config: Config,
     pub build_mode: BuildMode,
 }
@@ -52,7 +54,7 @@ static ENVIRONMENT: OnceLock<RwLock<Environment>> = OnceLock::new();
 fn default_environment() -> Environment {
     Environment {
         root: "./".into(),
-        config_file: crate::config::DEFAULT_CONFIG_PATH.into(),
+        config_file: None,
         config: Config::default(),
         build_mode: BuildMode::Publish,
     }
@@ -202,26 +204,34 @@ pub(super) fn with_test_environment_config<R>(
     let _reset = Reset;
     update_environment(Environment {
         root: root.clone(),
-        config_file: root.join(crate::config::DEFAULT_CONFIG_PATH),
+        config_file: Some(root.join(crate::config::DEFAULT_CONFIG_PATH)),
         config,
         build_mode,
     });
     f()
 }
 
-pub fn init_environment(toml_file: &Utf8Path, build_mode: BuildMode) -> eyre::Result<()> {
-    let toml_file = config::resolve_config_path(toml_file)?;
+pub fn init_environment(source: &config::ConfigSource, build_mode: BuildMode) -> eyre::Result<()> {
+    match source {
+        config::ConfigSource::File(config_path) => {
+            let config_path = config::resolve_config_path(config_path)?;
+            let (root, _file_name) =
+                path_utils::split_file_name(&config_path).ok_or_else(|| {
+                    eyre!(
+                        "invalid config path `{}`: path cannot be empty",
+                        config_path
+                    )
+                })?;
+            let toml = std::fs::read_to_string(&config_path)?;
 
-    let (root, _file_name) = path_utils::split_file_name(&toml_file)
-        .ok_or_else(|| eyre!("invalid config path `{}`: path cannot be empty", toml_file))?;
-    let toml = std::fs::read_to_string(&toml_file)?;
-
-    update_environment(Environment {
-        root: root.to_owned(),
-        config_file: toml_file,
-        config: config::parse_config(&toml)?,
-        build_mode,
-    });
+            update_environment(Environment {
+                root: root.to_owned(),
+                config_file: Some(config_path),
+                config: config::parse_config(&toml)?,
+                build_mode,
+            });
+        }
+    }
     Ok(())
 }
 
@@ -255,7 +265,7 @@ pub fn root_dir() -> Utf8PathBuf {
     derived_snapshot().root_dir.clone()
 }
 
-pub fn config_file() -> Utf8PathBuf {
+pub fn config_file() -> Option<Utf8PathBuf> {
     with_environment(|env| env.config_file.clone())
 }
 
@@ -327,7 +337,7 @@ mod tests {
             &lock,
             Environment {
                 root: Utf8PathBuf::from("site"),
-                config_file: Utf8PathBuf::from("Kodama.toml"),
+                config_file: Some(Utf8PathBuf::from("Kodama.toml")),
                 config: Config::default(),
                 build_mode: BuildMode::Serve,
             },

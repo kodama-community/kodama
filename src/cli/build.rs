@@ -73,7 +73,7 @@ pub fn no_cache_enabled() -> &'static bool {
 /// This function invoked the [`environment::init_environment`] function to initialize the environment
 pub fn build(command: &BuildCommand) -> eyre::Result<()> {
     build_with(
-        &command.config,
+        &config::ConfigSource::file(command.config.as_str()),
         BuildMode::Publish,
         BuildOptions {
             verbose: command.verbose,
@@ -84,17 +84,21 @@ pub fn build(command: &BuildCommand) -> eyre::Result<()> {
     )
 }
 
-pub fn build_with(config: &str, mode: BuildMode, options: BuildOptions) -> eyre::Result<()> {
-    build_with_dirty(config, mode, options, None)
+pub fn build_with(
+    source: &config::ConfigSource,
+    mode: BuildMode,
+    options: BuildOptions,
+) -> eyre::Result<()> {
+    build_with_dirty(source, mode, options, None)
 }
 
 pub fn build_with_dirty(
-    config: &str,
+    source: &config::ConfigSource,
     mode: BuildMode,
     options: BuildOptions,
     dirty_paths: Option<&DirtySet>,
 ) -> eyre::Result<()> {
-    environment::init_environment(Utf8Path::new(config), mode)?;
+    environment::init_environment(source, mode)?;
     crate::typst::cache::begin_build();
     environment::ensure_cache_version()?;
     _ = VERBOSE.set(options.verbose);
@@ -126,8 +130,11 @@ pub fn build_with_dirty(
     Ok(())
 }
 
-pub fn serve_rewrite_from_memory(config: &str, options: BuildOptions) -> eyre::Result<()> {
-    environment::init_environment(Utf8Path::new(config), BuildMode::Serve)?;
+pub fn serve_rewrite_from_memory(
+    source: &config::ConfigSource,
+    options: BuildOptions,
+) -> eyre::Result<()> {
+    environment::init_environment(source, BuildMode::Serve)?;
     crate::typst::cache::begin_build();
     environment::ensure_cache_version()?;
     _ = VERBOSE.set(options.verbose);
