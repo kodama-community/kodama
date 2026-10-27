@@ -5,8 +5,6 @@
 
 A [Typst](https://github.com/typst/typst)-friendly static Zettelkästen site generator.
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kokic/kodama)
-
 ## Features
 
 - **Small, self-contained binary.** A single command-line executable of a few megabytes, with a deliberately minimal dependency footprint — optional features are disabled across all dependencies, so there is nothing extra to install or carry around.
@@ -30,4 +28,3 @@ A [Typst](https://github.com/typst/typst)-friendly static Zettelkästen site gen
 
 - QQ Group 1044305570 - 中文交流群. 
 - [Kodama Discord server](https://discord.gg/mbeF8J6rXX) - a place to chat with the project's devs and other community members.
-

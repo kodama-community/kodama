@@ -73,7 +73,7 @@ fn unchanged_builds_preserve_page_modification_times() {
 fn changed_pages_and_embeds_update_without_rewriting_unrelated_pages() {
     let site = Site::new();
     site.write("trees/index.md", "# Root\n\n[](/child.md#:embed)\n");
-    site.write("trees/child.md", "# Child\n\nBEFORE_CHANGE\n");
+    site.write("trees/child.md", "# Child\n\nBEFORECHANGE\n");
     site.write("trees/other.md", "# Other\n\nUnrelated\n");
     site.build();
     let pages: Vec<_> = ["index", "child", "other"]
@@ -81,7 +81,7 @@ fn changed_pages_and_embeds_update_without_rewriting_unrelated_pages() {
         .map(|slug| (slug, site.mark_page(slug)))
         .collect();
 
-    site.write("trees/child.md", "# Child\n\nAFTER_CHANGE\n");
+    site.write("trees/child.md", "# Child\n\nAFTERCHANGE\n");
     site.build();
     for (slug, modified) in pages {
         let path = site.0.join(format!("publish/{slug}.html"));
@@ -91,8 +91,8 @@ fn changed_pages_and_embeds_update_without_rewriting_unrelated_pages() {
         } else {
             assert_ne!(updated, modified);
             let html = fs::read_to_string(path).unwrap();
-            assert!(html.contains("AFTER_CHANGE"));
-            assert!(!html.contains("BEFORE_CHANGE"));
+            assert!(html.contains("AFTERCHANGE"));
+            assert!(!html.contains("BEFORECHANGE"));
         }
     }
 
