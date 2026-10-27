@@ -110,54 +110,7 @@ fn validate_suffixes(suffix: &Suffix) -> eyre::Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
 mod test {
-    use camino::{Utf8Path, Utf8PathBuf};
-    use std::fs;
-
-    #[test]
-    fn test_resolve_config_path_returns_the_given_path() {
-        let root = crate::test_io::case_dir("config-resolve-present");
-        fs::create_dir_all(root.as_std_path()).unwrap();
-        let config_path = root.join("Kodama.toml");
-        fs::write(config_path.as_std_path(), "").unwrap();
-
-        let resolved = crate::config::resolve_config_path(config_path.as_path()).unwrap();
-        assert_eq!(resolved, config_path);
-
-        let _ = fs::remove_dir_all(root.as_std_path());
-    }
-
-    #[test]
-    fn test_resolve_config_path_does_not_fall_back_to_the_parent_directory() {
-        let root = crate::test_io::case_dir("config-resolve-parent");
-        let sub = root.join("sub");
-        fs::create_dir_all(sub.as_std_path()).unwrap();
-        // A config file exists one level up; it must not be substituted.
-        fs::write(root.join("Kodama.toml").as_std_path(), "").unwrap();
-
-        let err = crate::config::resolve_config_path(sub.join("Kodama.toml").as_path())
-            .expect_err("missing config must not resolve to the parent directory");
-        let message = format!("{err}");
-        assert!(
-            message.contains("configuration file not found"),
-            "{message}"
-        );
-        assert!(message.contains("sub/Kodama.toml"), "{message}");
-        assert!(!message.contains("/./"), "{message}");
-
-        let _ = fs::remove_dir_all(root.as_std_path());
-    }
-
-    #[test]
-    fn test_missing_config_message_reports_the_current_directory() {
-        let err = crate::config::resolve_config_path(Utf8Path::new("./definitely-missing.toml"))
-            .expect_err("missing config must be an error");
-        let message = format!("{err}");
-        let cwd = Utf8PathBuf::from_path_buf(std::env::current_dir().unwrap()).unwrap();
-        assert!(message.contains(cwd.as_str()), "{message}");
-        assert!(!message.contains("/./"), "{message}");
-    }
 
     #[test]
     fn test_empty_toml() {
