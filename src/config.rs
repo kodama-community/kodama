@@ -11,7 +11,7 @@ pub mod text;
 pub mod toc;
 
 use build::Build;
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
 use kodama::Kodama;
 use publish::Publish;
 use serde::{Deserialize, Serialize};
@@ -46,28 +46,39 @@ pub struct Config {
     pub suffix: Suffix,
 }
 
-/// Try to find toml file in the current directory or the parent directory.
-pub fn find_config(toml_file: &Utf8Path) -> eyre::Result<Utf8PathBuf> {
-    if !toml_file.exists() {
-        let parent = toml_file
-            .parent()
-            .ok_or_else(|| eyre::eyre!("cannot resolve parent directory of `{}`", toml_file))?
-            .canonicalize_utf8()?;
-        let parent = parent.parent().ok_or_else(|| {
-            eyre::eyre!(
-                "cannot find configuration file from root directory while searching from `{}`",
-                toml_file
-            )
-        })?;
-
-        let toml_file = parent.join(DEFAULT_CONFIG_PATH);
-        if !toml_file.exists() {
-            return Err(eyre::eyre!("cannot find configuration file: {}", toml_file));
-        }
-        Ok(toml_file)
-    } else {
-        Ok(toml_file.to_owned())
+/// Resolve the configuration file path used by project commands.
+///
+/// The given path is authoritative: it is returned as-is when it exists, and a
+/// missing path is an error. The path is never substituted with a file from
+/// another directory, because the configuration file also determines the
+/// project root, and therefore where output is written.
+pub fn resolve_config_path(config_path: &Utf8Path) -> eyre::Result<Utf8PathBuf> {
+    if !config_path.exists() {
+        return Err(eyre::eyre!(
+            "configuration file not found: `{}`\n\
+             Run from the site root, or pass the configuration file explicitly, for example `-c ../Kodama.toml`.",
+            absolute_display(config_path)
+        ));
     }
+    Ok(config_path.to_owned())
+}
+
+/// Render `path` as an absolute path for diagnostics, without changing the
+/// path that is actually used. CurDir components (as in the default
+/// `./Kodama.toml`) are dropped so messages do not read `site/./Kodama.toml`.
+fn absolute_display(path: &Utf8Path) -> String {
+    let normalized: Utf8PathBuf = path
+        .components()
+        .filter(|component| !matches!(component, Utf8Component::CurDir))
+        .collect();
+    if normalized.is_absolute() {
+        return normalized.to_string();
+    }
+    std::env::current_dir()
+        .ok()
+        .and_then(|cwd| Utf8PathBuf::from_path_buf(cwd).ok())
+        .map(|cwd| cwd.join(&normalized).to_string())
+        .unwrap_or_else(|| normalized.to_string())
 }
 
 pub fn parse_config(config: &str) -> eyre::Result<Config> {
@@ -99,7 +110,54 @@ fn validate_suffixes(suffix: &Suffix) -> eyre::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 mod test {
+    use camino::{Utf8Path, Utf8PathBuf};
+    use std::fs;
+
+    #[test]
+    fn test_resolve_config_path_returns_the_given_path() {
+        let root = crate::test_io::case_dir("config-resolve-present");
+        fs::create_dir_all(root.as_std_path()).unwrap();
+        let config_path = root.join("Kodama.toml");
+        fs::write(config_path.as_std_path(), "").unwrap();
+
+        let resolved = crate::config::resolve_config_path(config_path.as_path()).unwrap();
+        assert_eq!(resolved, config_path);
+
+        let _ = fs::remove_dir_all(root.as_std_path());
+    }
+
+    #[test]
+    fn test_resolve_config_path_does_not_fall_back_to_the_parent_directory() {
+        let root = crate::test_io::case_dir("config-resolve-parent");
+        let sub = root.join("sub");
+        fs::create_dir_all(sub.as_std_path()).unwrap();
+        // A config file exists one level up; it must not be substituted.
+        fs::write(root.join("Kodama.toml").as_std_path(), "").unwrap();
+
+        let err = crate::config::resolve_config_path(sub.join("Kodama.toml").as_path())
+            .expect_err("missing config must not resolve to the parent directory");
+        let message = format!("{err}");
+        assert!(
+            message.contains("configuration file not found"),
+            "{message}"
+        );
+        assert!(message.contains("sub/Kodama.toml"), "{message}");
+        assert!(!message.contains("/./"), "{message}");
+
+        let _ = fs::remove_dir_all(root.as_std_path());
+    }
+
+    #[test]
+    fn test_missing_config_message_reports_the_current_directory() {
+        let err = crate::config::resolve_config_path(Utf8Path::new("./definitely-missing.toml"))
+            .expect_err("missing config must be an error");
+        let message = format!("{err}");
+        let cwd = Utf8PathBuf::from_path_buf(std::env::current_dir().unwrap()).unwrap();
+        assert!(message.contains(cwd.as_str()), "{message}");
+        assert!(!message.contains("/./"), "{message}");
+    }
 
     #[test]
     fn test_empty_toml() {

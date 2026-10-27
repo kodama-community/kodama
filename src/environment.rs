@@ -210,7 +210,7 @@ pub(super) fn with_test_environment_config<R>(
 }
 
 pub fn init_environment(toml_file: &Utf8Path, build_mode: BuildMode) -> eyre::Result<()> {
-    let toml_file = config::find_config(toml_file)?;
+    let toml_file = config::resolve_config_path(toml_file)?;
 
     let (root, _file_name) = path_utils::split_file_name(&toml_file)
         .ok_or_else(|| eyre!("invalid config path `{}`: path cannot be empty", toml_file))?;

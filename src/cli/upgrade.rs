@@ -93,7 +93,7 @@ fn run_upgrade_config(command: &UpgradeConfigCommand) -> eyre::Result<()> {
 }
 
 fn run_upgrade_typst_lib(command: &UpgradeTypstLibCommand) -> eyre::Result<()> {
-    let source_path = resolve_config_path(&command.config)?;
+    let source_path = config::resolve_config_path(Utf8Path::new(&command.config))?;
     let source = std::fs::read_to_string(&source_path)
         .wrap_err_with(|| eyre!("failed to read config file \"{}\"", source_path))?;
     let config = config::parse_config(&source).wrap_err_with(|| {
@@ -118,15 +118,6 @@ fn print_config_upgrade_message(source_path: &camino::Utf8Path, output_path: &ca
     }
 }
 
-fn resolve_config_path(config_path: &str) -> eyre::Result<Utf8PathBuf> {
-    config::find_config(Utf8Path::new(config_path)).wrap_err_with(|| {
-        eyre!(
-            "failed to locate configuration file from \"{}\"",
-            config_path
-        )
-    })
-}
-
 struct UpgradedConfig {
     source_path: Utf8PathBuf,
     output_path: Utf8PathBuf,
@@ -137,7 +128,7 @@ fn upgrade_config_file(
     config_path: &str,
     output_path: Option<&str>,
 ) -> eyre::Result<UpgradedConfig> {
-    let source_path = resolve_config_path(config_path)?;
+    let source_path = config::resolve_config_path(Utf8Path::new(config_path))?;
     let source = std::fs::read_to_string(&source_path)
         .wrap_err_with(|| eyre!("failed to read config file \"{}\"", source_path))?;
     let (upgraded, upgraded_config) = upgrade_content(&source)?;

@@ -1,6 +1,6 @@
 # Configuration Reference
 
-Kodama reads `Kodama.toml` by default. Commands that accept `--config` can point at another file. If the specified config path is not found, Kodama searches from the parent directory in the way used by project commands, so commands can often be run from inside a site.
+Kodama reads `Kodama.toml` by default. Commands that accept `--config` can point at another file. A config path is used as given: when it does not exist the command fails instead of falling back to a file in another directory. The config file determines the project root, and therefore where the output directory is written, so it is never inferred from a parent directory. To run a command from a subdirectory, pass the config explicitly, for example `kodama build -c ../Kodama.toml`.
 
 An empty configuration is valid because every section has defaults.
 

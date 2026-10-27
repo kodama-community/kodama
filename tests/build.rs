@@ -128,3 +128,51 @@ fn missing_or_corrupted_pages_are_rebuilt_from_unchanged_sources() {
     site.build();
     assert_eq!(fs::read(&path).unwrap(), original);
 }
+
+fn stderr_of(output: &std::process::Output) -> String {
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+#[test]
+fn missing_config_is_reported_instead_of_using_the_parent_directory_config() {
+    let site = Site::new();
+    site.write("trees/index.md", "# Root\n\nContent\n");
+    let sub = site.0.join("sub");
+    fs::create_dir_all(&sub).unwrap();
+
+    let output = site.command(&["build"]).current_dir(&sub).output().unwrap();
+    assert!(!output.status.success(), "build must fail without a config");
+    let stderr = stderr_of(&output);
+    assert!(stderr.contains("configuration file not found"), "{stderr}");
+    assert!(stderr.contains("sub"), "{stderr}");
+    // The parent site must not be built as a side effect.
+    assert!(!site.0.join("publish/index.html").exists());
+    assert!(!sub.join("publish").exists());
+}
+
+#[test]
+fn bare_config_name_typo_reports_not_found() {
+    let site = Site::new();
+
+    let output = site.run(&["build", "-c", "nope.toml"]);
+    assert!(!output.status.success());
+    let stderr = stderr_of(&output);
+    assert!(stderr.contains("configuration file not found"), "{stderr}");
+    assert!(!stderr.contains("os error 2"), "{stderr}");
+}
+
+#[test]
+fn explicit_relative_config_still_works_from_a_subdirectory() {
+    let site = Site::new();
+    site.write("trees/index.md", "# Root\n\nContent\n");
+    let sub = site.0.join("sub");
+    fs::create_dir_all(&sub).unwrap();
+
+    let output = site
+        .command(&["build", "-c", "../Kodama.toml"])
+        .current_dir(&sub)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", stderr_of(&output));
+    assert!(site.0.join("publish/index.html").exists());
+}

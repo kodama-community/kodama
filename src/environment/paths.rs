@@ -50,20 +50,15 @@ pub fn create_parent_dirs<P: AsRef<Utf8Path>>(path: P) {
     }
 }
 
-pub fn auto_create_dir_path<P: AsRef<Utf8Path>>(paths: impl IntoIterator<Item = P>) -> Utf8PathBuf {
-    let mut filepath: Utf8PathBuf = super::root_dir();
-    for path in paths {
-        filepath.push(path);
-    }
-    create_parent_dirs(&filepath);
-    filepath
-}
-
+/// Resolve a path inside the output directory.
+///
+/// [`output_dir`](super::output_dir) already contains the project root, so the
+/// path must not be prefixed with the root again; doing so used to move output
+/// outside the site when the root was a relative path such as `..`.
 pub fn output_path<P: AsRef<Utf8Path>>(path: P) -> Utf8PathBuf {
-    let dir = super::output_dir();
-    let dir = dir.as_path();
-    let path = path.as_ref();
-    auto_create_dir_path(vec![dir, path])
+    let path = super::output_dir().join(path.as_ref());
+    create_parent_dirs(path.as_path());
+    path
 }
 
 pub fn hash_dir() -> Utf8PathBuf {

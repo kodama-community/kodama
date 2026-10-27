@@ -2,6 +2,8 @@
 
 Kodama commands accept the usual `--help` flag. Most commands also have visible aliases for shorter interactive use.
 
+Project commands read `./Kodama.toml` unless `--config <path>` is given. The path must exist: Kodama does not search parent directories for a configuration file, so run from the site root or pass the path explicitly (for example `-c ../Kodama.toml`).
+
 ## `kodama new`
 
 Creates site files, config files, or sections.
