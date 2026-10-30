@@ -8,8 +8,8 @@ use camino::{Utf8Path, Utf8PathBuf};
 use eyre::{eyre, WrapErr};
 
 const CACHE_VERSION_FILE: &str = "version";
-// Emphasis rules changed; cached Markdown must be reparsed.
-const CACHE_SCHEMA_VERSION: &str = "schema-v13";
+// Math output changed; cached Markdown must be reparsed.
+const CACHE_SCHEMA_VERSION: &str = "schema-v14";
 
 fn cache_version_value() -> String {
     format!(

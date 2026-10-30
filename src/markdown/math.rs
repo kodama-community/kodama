@@ -2,9 +2,21 @@
 // Released under the GPL-3.0 license as described in the file LICENSE.
 // Authors: Kokic (@kokic)
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tonic::{HtmlRenderConfig, Settings, TrustPolicy};
 
 use crate::{environment, slug::Slug};
+
+static MATH_RENDER_ERROR_FLAG: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn reset_math_render_error_flag() {
+    MATH_RENDER_ERROR_FLAG.store(false, Ordering::Relaxed);
+}
+
+pub(crate) fn math_render_error_detected() -> bool {
+    MATH_RENDER_ERROR_FLAG.load(Ordering::Relaxed)
+}
 
 fn delimited(source: &str, display: bool) -> String {
     let delimiter = if display { "$$" } else { "$" };
@@ -38,6 +50,7 @@ pub fn render_html(source: &str, display: bool, slug: Slug) -> String {
     match rendered {
         Ok(html) => html,
         Err(error) => {
+            MATH_RENDER_ERROR_FLAG.store(true, Ordering::Relaxed);
             color_print::ceprintln!("<r>{} at {}</>", error, slug);
             htmlize::escape_text(error.to_string()).into_owned()
         }

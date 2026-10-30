@@ -16,6 +16,7 @@ use crate::{
     },
     environment::{self, BuildMode},
     markdown::embed_markdown::{include_error_detected, reset_include_error_flag},
+    markdown::math::{math_render_error_detected, reset_math_render_error_flag},
     path_utils,
     slug::{self, SectionKind, Slug},
 };
@@ -100,6 +101,7 @@ pub fn check(command: &CheckCommand) -> eyre::Result<()> {
 
     reset_typst_render_error_flag();
     reset_include_error_flag();
+    reset_math_render_error_flag();
     let shallows = parse_shallows_no_cache(&workspace, &mut diagnostics);
     if typst_render_error_detected() {
         diagnostics.push(Diagnostic::error(
@@ -109,6 +111,11 @@ pub fn check(command: &CheckCommand) -> eyre::Result<()> {
     if include_error_detected() {
         diagnostics.push(Diagnostic::error(
             "Include file read errors were detected while elaborating markdown content.",
+        ));
+    }
+    if math_render_error_detected() {
+        diagnostics.push(Diagnostic::error(
+            "Math render errors were detected while elaborating markdown content.",
         ));
     }
     collect_dangling_local_links(&shallows, &mut diagnostics);

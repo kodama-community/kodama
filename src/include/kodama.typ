@@ -102,8 +102,11 @@
 
 /// 
 /// - raw-tex (string): raw TeX math source code without delimiters
-/// -> string
-#let tex(raw-tex) = "$" + raw-tex.text + "$"
+/// -> content
+#let tex(raw-tex) = compatibled-html(
+  () => body => html.elem("span", body, attrs: (class: "math math-inline")),
+  () => "$" + raw-tex.text + "$",
+)
 
 #let local(slug, text: none) = with-target-check((export-target) => {
   if export-target == "html" {
