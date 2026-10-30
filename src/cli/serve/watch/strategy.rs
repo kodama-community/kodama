@@ -99,12 +99,7 @@ pub(in crate::cli::serve) fn compose_watched_paths(
     let mut watched_paths = vec![trees_dir, assets_dir];
     watched_paths.extend(config_file);
     watched_paths.extend(IMPORT_FILES.map(|name| root_dir.join(name)));
-    // HTML inputs are limited to the fixed import paths above.
-    watched_paths.extend(theme_paths.into_iter().filter(|path| {
-        !path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
-    }));
+    watched_paths.extend(theme_paths);
     watched_paths
 }
 
@@ -201,7 +196,7 @@ mod tests {
         let trees = root.join("trees");
         let assets = root.join("assets");
         let config = root.join("Kodama.toml");
-        let theme = root.join("themes/theme.css");
+        let theme = root.join("themes/theme.html");
 
         let watched = compose_watched_paths(
             root.as_path(),
