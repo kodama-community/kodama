@@ -7,18 +7,20 @@
 
 <script>
   document.addEventListener("DOMContentLoaded", function () {
-    renderMathInElement(document.body, {
+    const options = {
       delimiters: [
         { left: "$$", right: "$$", display: true },
         { left: "$", right: "$", display: false },
         { left: "\\(", right: "\\)", display: false },
         { left: "\\[", right: "\\]", display: true },
       ],
-      ignoredClasses: ["katex", "katex-error"],
+      macros: {},
       trust: true,
       strict: false,
       throwOnError: false,
       minRuleThickness: 0.05,
-    });
+    };
+    document.querySelectorAll(".math.math-inline, .math.math-display")
+      .forEach(element => renderMathInElement(element, options));
   });
 </script>

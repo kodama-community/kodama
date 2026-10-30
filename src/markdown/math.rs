@@ -12,12 +12,14 @@ fn delimited(source: &str, display: bool) -> String {
 }
 
 /// Serialize math at a rich-text output boundary. With pre-rendering disabled,
-/// emit escaped, delimited source for browser rendering. Otherwise compile with
-/// independent macro state and show errors in place without a source fallback.
+/// wrap escaped, delimited source in a math span for browser rendering. Otherwise
+/// compile with independent macro state and show errors without a source fallback.
 /// Plain-text consumers must keep the original events and use `write_leaf`.
 pub fn render_html(source: &str, display: bool, slug: Slug) -> String {
     if !environment::pre_render_math() {
-        return htmlize::escape_text(delimited(source, display)).into_owned();
+        let mode = if display { "display" } else { "inline" };
+        let source = htmlize::escape_text(delimited(source, display));
+        return format!(r#"<span class="math math-{mode}">{source}</span>"#);
     }
 
     let mut settings = Settings {
@@ -36,10 +38,8 @@ pub fn render_html(source: &str, display: bool, slug: Slug) -> String {
     match rendered {
         Ok(html) => html,
         Err(error) => {
-            color_print::ceprintln!("<r>Math error in `{}`: {}</>", slug, error);
-            let message = htmlize::escape_text(format!("Math error: {error}"));
-            let display_class = if display { " katex-display" } else { "" };
-            format!("<span class=\"katex-error{display_class}\">{message}</span>")
+            color_print::ceprintln!("<r>{} at {}</>", error, slug);
+            htmlize::escape_text(error.to_string()).into_owned()
         }
     }
 }
