@@ -11,13 +11,10 @@ use super::{
     path_resolution::{relocate_trees_path_with_trees_root, resolve_section_url},
     url::{is_allowed_scheme, is_unsafe_scheme, scheme_name},
 };
-use std::{
-    fs, mem,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::{fs, mem};
 
 use crate::{
-    compiler::section::{EmbedContent, HTMLContent, LocalLink, SectionOption},
+    compiler::{section::{EmbedContent, HTMLContent, LocalLink, SectionOption}, Diagnostic, ParseDiagnostics},
     environment::{assets_dir_without_root, root_dir, trees_dir_without_root},
     html::{html_code_block, html_link},
     markdown::link_action::State,
@@ -28,21 +25,8 @@ use crate::{
 use camino::Utf8PathBuf;
 use pulldown_cmark::{Event, Tag, TagEnd};
 
-static INCLUDE_READ_ERROR_FLAG: AtomicBool = AtomicBool::new(false);
-
-pub fn reset_include_error_flag() {
-    INCLUDE_READ_ERROR_FLAG.store(false, Ordering::Relaxed);
-}
-
-pub fn include_error_detected() -> bool {
-    INCLUDE_READ_ERROR_FLAG.load(Ordering::Relaxed)
-}
-
-fn record_include_error() {
-    INCLUDE_READ_ERROR_FLAG.store(true, Ordering::Relaxed);
-}
-
-pub struct Embed<'e, E> {
+pub struct Embed<'d, 'e, E> {
+    diagnostics: &'d ParseDiagnostics,
     events: E,
     current_slug: Slug,
     assets_dir_name: String,
@@ -53,13 +37,14 @@ pub struct Embed<'e, E> {
     nest: usize,
 }
 
-impl<'e, E> Embed<'e, E> {
-    pub fn process(events: E, current_slug: Slug) -> Self {
+impl<'d, 'e, E> Embed<'d, 'e, E> {
+    pub fn process(events: E, current_slug: Slug, diagnostics: &'d ParseDiagnostics) -> Self {
         Self::process_with_roots(
             events,
             current_slug,
             assets_dir_without_root(),
             trees_dir_without_root(),
+            diagnostics,
         )
     }
 
@@ -68,8 +53,10 @@ impl<'e, E> Embed<'e, E> {
         current_slug: Slug,
         assets_dir_name: String,
         trees_dir_name: String,
+        diagnostics: &'d ParseDiagnostics,
     ) -> Self {
         Self {
+            diagnostics,
             events,
             current_slug,
             assets_dir_name,
@@ -90,7 +77,7 @@ impl<'e, E> Embed<'e, E> {
     }
 }
 
-impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
+impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'_, 'e, E> {
     type Item = EventExtended<'e>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -154,7 +141,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                                     option = opt;
                                     *t = rest.into();
                                 }
-                                Some(render_label(content.into_iter(), self.current_slug))
+                                Some(render_label(content.into_iter(), self.current_slug, self.diagnostics))
                             } else {
                                 None
                             };
@@ -171,13 +158,10 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
 
                             let include_path = root_dir().join(&url);
                             let content = fs::read_to_string(&include_path).unwrap_or_else(|err| {
-                                record_include_error();
-                                color_print::ceprintln!(
-                                    "<y>Warning: failed to include file `{}` resolved to `{}`: {}</>",
-                                    url,
-                                    include_path,
-                                    err
-                                );
+                                self.diagnostics.borrow_mut().push(Diagnostic::error(format!(
+                                    "failed to include file `{url}` resolved to `{include_path}` at `{}`: {err}",
+                                    self.current_slug,
+                                )));
                                 format!("failed to include file: {url}")
                             });
                             let escaped = htmlize::escape_text(content);
@@ -189,13 +173,13 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                             let text = if content.is_empty() {
                                 None
                             } else {
-                                Some(render_label(content.into_iter(), self.current_slug))
+                                Some(render_label(content.into_iter(), self.current_slug, self.diagnostics))
                             };
                             return Some(LocalLink { url, text }.into());
                         }
                         State::ExternalLink => {
                             let (url, content) = self.exit();
-                            let text = render_label(content.into_iter(), self.current_slug);
+                            let text = render_label(content.into_iter(), self.current_slug, self.diagnostics);
                             let formatted_title;
                             let title = if url == text {
                                 &url
@@ -208,7 +192,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                         }
                         State::AssetFile => {
                             let (url, content) = self.exit();
-                            let text = render_label(content.into_iter(), self.current_slug);
+                            let text = render_label(content.into_iter(), self.current_slug, self.diagnostics);
                             let html = html_link(&url, &text, &text, State::AssetFile.strify());
                             return Some(Event::Html(html.into()).into());
                         }
@@ -505,6 +489,7 @@ mod tests {
             Slug::new("index"),
             ASSETS_DIR.to_string(),
             TREES_DIR.to_string(),
+            &ParseDiagnostics::default(),
         )
         .collect::<Vec<_>>();
 
@@ -529,6 +514,7 @@ mod tests {
             Slug::new("index"),
             ASSETS_DIR.to_string(),
             TREES_DIR.to_string(),
+            &ParseDiagnostics::default(),
         )
         .collect::<Vec<_>>();
 
@@ -567,6 +553,7 @@ mod tests {
             Slug::new("index"),
             ASSETS_DIR.to_string(),
             TREES_DIR.to_string(),
+            &ParseDiagnostics::default(),
         )
         .collect::<Vec<_>>();
 
@@ -596,6 +583,7 @@ mod tests {
             Slug::new("index"),
             ASSETS_DIR.to_string(),
             TREES_DIR.to_string(),
+            &ParseDiagnostics::default(),
         )
         .collect::<Vec<_>>();
 
@@ -624,6 +612,7 @@ mod tests {
             Slug::new("index"),
             ASSETS_DIR.to_string(),
             TREES_DIR.to_string(),
+            &ParseDiagnostics::default(),
         )
         .collect::<Vec<_>>();
 
@@ -654,6 +643,7 @@ mod tests {
             Slug::new("index"),
             ASSETS_DIR.to_string(),
             TREES_DIR.to_string(),
+            &ParseDiagnostics::default(),
         )
         .collect::<Vec<_>>();
 
@@ -678,6 +668,7 @@ mod tests {
             Slug::new("index"),
             ASSETS_DIR.to_string(),
             TREES_DIR.to_string(),
+            &ParseDiagnostics::default(),
         )
         .collect::<Vec<_>>();
 

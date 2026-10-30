@@ -9,14 +9,12 @@ use eyre::{bail, eyre, WrapErr};
 
 use crate::{
     cli::config_arg,
-    compiler::inline_typst::{self, reset_typst_render_error_flag, typst_render_error_detected},
     compiler::{
-        self,
+        self, inline_typst,
         section::{HTMLContent, LazyContent, UnresolvedSection},
+        Diagnostic, Severity,
     },
     environment::{self, BuildMode},
-    markdown::embed_markdown::{include_error_detected, reset_include_error_flag},
-    markdown::math::{math_render_error_detected, reset_math_render_error_flag},
     path_utils,
     slug::{self, SectionKind, Slug},
 };
@@ -36,41 +34,6 @@ pub struct CheckCommand {
     /// Treat warnings as errors.
     #[arg(long, default_value_t = false)]
     strict: bool,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Severity {
-    Error,
-    Warning,
-    Hint,
-}
-
-struct Diagnostic {
-    severity: Severity,
-    message: String,
-}
-
-impl Diagnostic {
-    fn error(message: impl Into<String>) -> Self {
-        Self {
-            severity: Severity::Error,
-            message: message.into(),
-        }
-    }
-
-    fn warning(message: impl Into<String>) -> Self {
-        Self {
-            severity: Severity::Warning,
-            message: message.into(),
-        }
-    }
-
-    fn hint(message: impl Into<String>) -> Self {
-        Self {
-            severity: Severity::Hint,
-            message: message.into(),
-        }
-    }
 }
 
 pub fn check(command: &CheckCommand) -> eyre::Result<()> {
@@ -99,27 +62,9 @@ pub fn check(command: &CheckCommand) -> eyre::Result<()> {
         )));
     }
 
-    reset_typst_render_error_flag();
-    reset_include_error_flag();
-    reset_math_render_error_flag();
     let shallows = parse_shallows_no_cache(&workspace, &mut diagnostics);
-    if typst_render_error_detected() {
-        diagnostics.push(Diagnostic::error(
-            "Typst render errors were detected while elaborating markdown content.",
-        ));
-    }
-    if include_error_detected() {
-        diagnostics.push(Diagnostic::error(
-            "Include file read errors were detected while elaborating markdown content.",
-        ));
-    }
-    if math_render_error_detected() {
-        diagnostics.push(Diagnostic::error(
-            "Math render errors were detected while elaborating markdown content.",
-        ));
-    }
     collect_dangling_local_links(&shallows, &mut diagnostics);
-    let has_parse_errors = diagnostics.iter().any(|d| d.severity == Severity::Error);
+    let has_parse_errors = diagnostics.iter().any(|d| d.severity.is_error());
     if !has_parse_errors {
         validate_compile_graph(&shallows, &mut diagnostics);
     }
@@ -130,7 +75,7 @@ pub fn check(command: &CheckCommand) -> eyre::Result<()> {
 
     let errors = diagnostics
         .iter()
-        .filter(|d| d.severity == Severity::Error)
+        .filter(|d| d.severity.is_error())
         .count();
     let warnings = diagnostics
         .iter()
@@ -172,8 +117,9 @@ fn parse_shallows_no_cache(
     for (slug, kind) in entries {
         let suffix = environment::suffix_for_kind(kind);
         match compiler::parse_source_sections(slug, kind) {
-            Ok(sections) => {
-                for (section_slug, section) in sections {
+            Ok(output) => {
+                diagnostics.extend(output.diagnostics);
+                for (section_slug, section) in output.sections {
                     if shallows.insert(section_slug, section).is_some() {
                         diagnostics.push(Diagnostic::error(format!(
                             "Duplicate section slug `{section_slug}` generated while parsing `{slug}.{suffix}`."
@@ -188,9 +134,16 @@ fn parse_shallows_no_cache(
     }
 
     // Compile inline formulas (reporting errors) and resolve placeholders.
-    let results = inline_typst::compile_inline_batch()
-        .map(|batch| batch.contents)
-        .unwrap_or_default();
+    let results = match inline_typst::compile_inline_batch() {
+        Ok(batch) => {
+            diagnostics.extend(batch.diagnostics);
+            batch.contents
+        }
+        Err(err) => {
+            diagnostics.push(Diagnostic::error(format!("{err:#}")));
+            Vec::new()
+        }
+    };
     for section in shallows.values_mut() {
         inline_typst::resolve_inline_typst_section(section, &results);
     }
@@ -245,7 +198,7 @@ fn resolve_subsection_slug(current_slug: Slug, url: &str) -> Slug {
 
 fn print_diagnostic(diagnostic: &Diagnostic) {
     match diagnostic.severity {
-        Severity::Error => color_print::ceprintln!("<r>Error:</> {}", diagnostic.message),
+        Severity::Fatal | Severity::Error => color_print::ceprintln!("<r>Error:</> {}", diagnostic.message),
         Severity::Warning => color_print::ceprintln!("<y>Warning:</> {}", diagnostic.message),
         Severity::Hint => color_print::ceprintln!("<dim>Hint:</> {}", diagnostic.message),
     }

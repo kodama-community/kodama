@@ -3,7 +3,7 @@
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
 use crate::{
-    compiler::{markdown::parse_spanned_markdown, section::HTMLContent},
+    compiler::{markdown::parse_spanned_markdown, section::HTMLContent, ParseDiagnostics},
     entry::{is_plain_metadata, HTMLMetaData, KEY_TAXON, KEY_TITLE},
     slug::Slug,
 };
@@ -12,14 +12,16 @@ use pulldown_cmark::{Event, Tag, TagEnd};
 
 pub struct Metadata<'m, E> {
     events: E,
+    diagnostics: &'m ParseDiagnostics,
     state: bool,
     metadata: &'m mut HTMLMetaData,
 }
 
 impl<'m, E> Metadata<'m, E> {
-    pub fn process(events: E, metadata: &'m mut HTMLMetaData) -> Self {
+    pub fn process(events: E, metadata: &'m mut HTMLMetaData, diagnostics: &'m ParseDiagnostics) -> Self {
         Self {
             events,
+            diagnostics,
             state: false,
             metadata,
         }
@@ -42,7 +44,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Metadata<'_, E> {
                     if !self.state || text.trim().is_empty() {
                         return Some(Ok(e));
                     }
-                    if let Err(e) = parse_metadata(text, self.metadata) {
+                    if let Err(e) = parse_metadata(text, self.metadata, self.diagnostics) {
                         return Some(Err(e.wrap_err("failed to parse metadata")));
                     }
                 }
@@ -57,7 +59,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Metadata<'_, E> {
 /// `(I)` `x86_64-pc-windows-msvc` and `(II)` `aarch64-unknown-linux-musl`.
 /// `(I)` automatically splits the input by lines,
 /// while `(II)` receives the entire multi-line string as a whole.
-fn parse_metadata(s: &str, metadata: &mut HTMLMetaData) -> eyre::Result<()> {
+fn parse_metadata(s: &str, metadata: &mut HTMLMetaData, diagnostics: &ParseDiagnostics) -> eyre::Result<()> {
     let current_slug = metadata
         .slug()
         .ok_or_else(|| eyre!("missing `slug` while parsing metadata block"))?;
@@ -75,7 +77,7 @@ fn parse_metadata(s: &str, metadata: &mut HTMLMetaData) -> eyre::Result<()> {
             let key = key.trim();
             let val = val.trim();
 
-            parse_metadata_value(key, val, current_slug, metadata)?;
+            parse_metadata_value(key, val, current_slug, metadata, diagnostics)?;
         }
     }
     Ok(())
@@ -86,13 +88,14 @@ fn parse_metadata_value(
     value: &str,
     current_slug: Slug,
     metadata: &mut HTMLMetaData,
+    diagnostics: &ParseDiagnostics,
 ) -> eyre::Result<()> {
     if is_plain_metadata(key) {
         metadata.builtin.assign(key, value, current_slug)?;
         return Ok(());
     }
 
-    let parsed = parse_spanned_markdown(value, current_slug);
+    let parsed = parse_spanned_markdown(value, current_slug, diagnostics);
     match key {
         KEY_TITLE => metadata.title = Some(parsed),
         KEY_TAXON => {
@@ -130,7 +133,7 @@ mod tests {
         crate::environment::mock_environment().unwrap();
 
         let mut metadata = metadata_with_slug("index");
-        parse_metadata("page-title: 中文", &mut metadata).unwrap();
+        parse_metadata("page-title: 中文", &mut metadata, &ParseDiagnostics::default()).unwrap();
 
         let parsed = metadata.page_title().unwrap_or_default().to_string();
         assert_eq!(parsed, "中文");
@@ -142,7 +145,7 @@ mod tests {
         crate::environment::mock_environment().unwrap();
 
         let mut metadata = metadata_with_slug("index");
-        parse_metadata("title: 中文", &mut metadata).unwrap();
+        parse_metadata("title: 中文", &mut metadata, &ParseDiagnostics::default()).unwrap();
 
         let parsed = metadata
             .title()
@@ -157,7 +160,7 @@ mod tests {
         crate::environment::mock_environment().unwrap();
 
         let mut metadata = metadata_with_slug("index");
-        parse_metadata("taxon: remark", &mut metadata).unwrap();
+        parse_metadata("taxon: remark", &mut metadata, &ParseDiagnostics::default()).unwrap();
 
         let parsed = metadata
             .taxon()

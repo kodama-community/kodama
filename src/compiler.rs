@@ -22,6 +22,7 @@ pub mod typst;
 pub mod writer;
 
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
     fs::File,
     io::BufReader,
@@ -57,6 +58,70 @@ pub type UnresolvedSections = HashMap<Slug, UnresolvedSection>;
 pub type SourceSectionsIndex = HashMap<Slug, Vec<Slug>>;
 pub type SourceDependencies = HashMap<Slug, Dependencies>;
 pub type ParsedSections = Vec<(Slug, UnresolvedSection)>;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Severity {
+    /// A rendering failure that also prevents an ordinary build from succeeding.
+    Fatal,
+    Error,
+    Warning,
+    Hint,
+}
+
+impl Severity {
+    pub(crate) fn is_error(self) -> bool {
+        matches!(self, Self::Fatal | Self::Error)
+    }
+}
+
+pub(crate) struct Diagnostic {
+    pub severity: Severity,
+    pub message: String,
+}
+
+impl Diagnostic {
+    pub(crate) fn fatal(message: impl Into<String>) -> Self {
+        Self { severity: Severity::Fatal, message: message.into() }
+    }
+
+    pub(crate) fn error(message: impl Into<String>) -> Self {
+        Self { severity: Severity::Error, message: message.into() }
+    }
+
+    pub(crate) fn warning(message: impl Into<String>) -> Self {
+        Self { severity: Severity::Warning, message: message.into() }
+    }
+
+    pub(crate) fn hint(message: impl Into<String>) -> Self {
+        Self { severity: Severity::Hint, message: message.into() }
+    }
+}
+
+/// Owned by one source parse; shared only by its lazy Markdown stages.
+pub(crate) type ParseDiagnostics = RefCell<Vec<Diagnostic>>;
+
+pub(crate) struct ParseOutput {
+    pub sections: ParsedSections,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+/// Ordinary builds keep rendering math/include error content, but reject
+/// Typst failures. Fatal messages are returned rather than printed twice.
+pub(super) fn report_build_diagnostics(diagnostics: &[Diagnostic]) -> eyre::Result<()> {
+    let mut fatal = Vec::new();
+    for diagnostic in diagnostics {
+        match diagnostic.severity {
+            Severity::Fatal => fatal.push(diagnostic.message.as_str()),
+            Severity::Error => color_print::ceprintln!("<r>{}</>", diagnostic.message),
+            Severity::Warning => color_print::ceprintln!("<y>{}</>", diagnostic.message),
+            Severity::Hint => color_print::ceprintln!("<dim>{}</>", diagnostic.message),
+        }
+    }
+    if !fatal.is_empty() {
+        return Err(eyre!("{}", fatal.join("\n")));
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct CompileOutputs {
@@ -240,6 +305,7 @@ pub(super) fn collect_shallows_with_sources(
     // every source has been parsed; only then can the placeholders be resolved
     // and the entry caches written.
     let batch = inline_typst::compile_inline_batch()?;
+    report_build_diagnostics(&batch.diagnostics)?;
 
     let mut shallows = HashMap::new();
     let mut source_sections = HashMap::new();
@@ -281,9 +347,10 @@ pub(super) fn collect_shallows_with_sources(
 pub(crate) fn parse_source_sections(
     source_slug: Slug,
     kind: SectionKind,
-) -> eyre::Result<ParsedSections> {
+) -> eyre::Result<ParseOutput> {
+    let diagnostics = ParseDiagnostics::default();
     let mut sections = match kind {
-        SectionKind::Markdown => parse_markdown_sections(source_slug).wrap_err_with(|| {
+        SectionKind::Markdown => parse_markdown_sections(source_slug, &diagnostics).wrap_err_with(|| {
             eyre!(
                 "failed to parse markdown file `{}.{}`",
                 source_slug,
@@ -303,7 +370,7 @@ pub(crate) fn parse_source_sections(
     for (_, section) in &mut sections {
         section.metadata.compute_textual_attrs();
     }
-    Ok(sections)
+    Ok(ParseOutput { sections, diagnostics: diagnostics.into_inner() })
 }
 
 pub(super) fn write_entry_cache(
@@ -386,10 +453,11 @@ fn load_shallow_sections(
         }
     }
 
-    let (sections, dependencies) =
+    let (output, dependencies) =
         typst_cache::capture_dependencies(|| parse_source_sections(source_slug, kind))?;
+    report_build_diagnostics(&output.diagnostics)?;
     Ok((
-        sections,
+        output.sections,
         SourceCache {
             entry_path,
             source_meta,

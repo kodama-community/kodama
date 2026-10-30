@@ -5,7 +5,7 @@
 use pulldown_cmark::{html, Event, Tag, TagEnd};
 use pulldown_cmark_escape::{escape_html, escape_html_body_text};
 
-use crate::slug::Slug;
+use crate::{compiler::ParseDiagnostics, slug::Slug};
 
 use super::math;
 
@@ -52,13 +52,13 @@ pub fn warn_unexpected(what: &str, context: &str) {
 /// Serialize a collected link label or embed title. `Embed` has already limited
 /// this buffer to inline formatting and leaf events, so every math event here
 /// belongs to rich text (not image alt text or another raw-source context).
-pub fn render_label<'e>(events: impl Iterator<Item = Event<'e>>, slug: Slug) -> String {
+pub fn render_label<'e>(events: impl Iterator<Item = Event<'e>>, slug: Slug, diagnostics: &ParseDiagnostics) -> String {
     let events = events.map(|event| match event {
         Event::InlineMath(source) => {
-            Event::InlineHtml(math::render_html(&source, false, slug).into())
+            Event::InlineHtml(math::render_html(&source, false, slug, diagnostics).into())
         }
         Event::DisplayMath(source) => {
-            Event::InlineHtml(math::render_html(&source, true, slug).into())
+            Event::InlineHtml(math::render_html(&source, true, slug, diagnostics).into())
         }
         other => other,
     });

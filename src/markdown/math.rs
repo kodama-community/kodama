@@ -2,21 +2,13 @@
 // Released under the GPL-3.0 license as described in the file LICENSE.
 // Authors: Kokic (@kokic)
 
-use std::sync::atomic::{AtomicBool, Ordering};
-
 use tonic::{HtmlRenderConfig, Settings, TrustPolicy};
 
-use crate::{environment, slug::Slug};
-
-static MATH_RENDER_ERROR_FLAG: AtomicBool = AtomicBool::new(false);
-
-pub(crate) fn reset_math_render_error_flag() {
-    MATH_RENDER_ERROR_FLAG.store(false, Ordering::Relaxed);
-}
-
-pub(crate) fn math_render_error_detected() -> bool {
-    MATH_RENDER_ERROR_FLAG.load(Ordering::Relaxed)
-}
+use crate::{
+    compiler::{Diagnostic, ParseDiagnostics},
+    environment,
+    slug::Slug,
+};
 
 fn delimited(source: &str, display: bool) -> String {
     let delimiter = if display { "$$" } else { "$" };
@@ -27,7 +19,7 @@ fn delimited(source: &str, display: bool) -> String {
 /// wrap escaped, delimited source in a math span for browser rendering. Otherwise
 /// compile with independent macro state and show errors without a source fallback.
 /// Plain-text consumers must keep the original events and use `write_leaf`.
-pub fn render_html(source: &str, display: bool, slug: Slug) -> String {
+pub fn render_html(source: &str, display: bool, slug: Slug, diagnostics: &ParseDiagnostics) -> String {
     if !environment::pre_render_math() {
         let mode = if display { "display" } else { "inline" };
         let source = htmlize::escape_text(delimited(source, display));
@@ -50,8 +42,7 @@ pub fn render_html(source: &str, display: bool, slug: Slug) -> String {
     match rendered {
         Ok(html) => html,
         Err(error) => {
-            MATH_RENDER_ERROR_FLAG.store(true, Ordering::Relaxed);
-            color_print::ceprintln!("<r>{} at {}</>", error, slug);
+            diagnostics.borrow_mut().push(Diagnostic::error(format!("{error} at {slug}")));
             htmlize::escape_text(error.to_string()).into_owned()
         }
     }

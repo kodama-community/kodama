@@ -740,6 +740,7 @@ mod tests {
                 let section = crate::compiler::markdown::parse_markdown_source(
                     "[](/guide/fig.typ#:block)",
                     Slug::new("guide/index"),
+                    &crate::compiler::ParseDiagnostics::default(),
                 )
                 .unwrap();
                 let mut shallows = HashMap::new();

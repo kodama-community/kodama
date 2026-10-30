@@ -9,7 +9,7 @@ use pulldown_cmark::{
 };
 use pulldown_cmark_escape::{escape_href, escape_html, escape_html_body_text};
 
-use crate::compiler::section::{LazyContent, LazyContents};
+use crate::compiler::{section::{LazyContent, LazyContents}, ParseDiagnostics};
 use crate::markdown::inline_content::{write_leaf, Escape};
 use crate::markdown::math;
 use crate::markdown::url::{is_allowed_scheme, is_unsafe_scheme, scheme_name};
@@ -33,7 +33,8 @@ fn is_safe_link_destination(dest: &str) -> bool {
     !is_unsafe_scheme(&scheme) && is_allowed_scheme(&scheme)
 }
 
-pub(super) struct HtmlWriter<'e, I> {
+pub(super) struct HtmlWriter<'d, 'e, I> {
+    diagnostics: &'d ParseDiagnostics,
     /// Iterator supplying events.
     iter: I,
 
@@ -58,12 +59,13 @@ pub(super) struct HtmlWriter<'e, I> {
     paragraph_started: bool,
 }
 
-impl<'e, I> HtmlWriter<'e, I>
+impl<'d, 'e, I> HtmlWriter<'d, 'e, I>
 where
     I: Iterator<Item = EventExtended<'e>>,
 {
-    pub(super) fn new(iter: I, contents: LazyContents, slug: Slug) -> Self {
+    pub(super) fn new(iter: I, contents: LazyContents, slug: Slug, diagnostics: &'d ParseDiagnostics) -> Self {
         Self {
+            diagnostics,
             iter,
             contents,
             slug,
@@ -179,11 +181,11 @@ where
                 }
                 InlineMath(text) => {
                     self.ensure_paragraph_started();
-                    self.write(&math::render_html(&text, false, self.slug));
+                    self.write(&math::render_html(&text, false, self.slug, self.diagnostics));
                 }
                 DisplayMath(text) => {
                     self.ensure_paragraph_started();
-                    self.write(&math::render_html(&text, true, self.slug));
+                    self.write(&math::render_html(&text, true, self.slug, self.diagnostics));
                 }
                 Html(html) | InlineHtml(html) => {
                     self.ensure_paragraph_started();
