@@ -2,15 +2,21 @@
 // Released under the GPL-3.0 license as described in the file LICENSE.
 // Authors: Kokic (@kokic)
 
-use std::{io::Write, sync::mpsc::RecvTimeoutError, time::Instant};
+use std::{
+    io::Write,
+    sync::mpsc::RecvTimeoutError,
+    time::{Duration, Instant},
+};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use notify::{Config, RecommendedWatcher, Watcher};
 
 use super::strategy::{
-    default_watch_strategy, display_watch_path, watch_mode_for_path, MissingPathLevel,
-    WatchBatcher, WatchChangeFoldState, WatchStrategy,
+    display_watch_path, fold_watch_change_lines, missing_path_level, should_handle_watch_event,
+    watch_mode_for_path, MissingPathLevel, WatchBatcher, WatchChangeFoldState,
 };
+
+const WATCH_DEBOUNCE: Duration = Duration::from_millis(250);
 
 /// from: https://github.com/notify-rs/notify/blob/main/examples/monitor_raw.rs#L18
 pub(in crate::cli::serve) fn watch_paths<P: AsRef<Utf8Path>, F, R>(
@@ -24,30 +30,15 @@ where
     F: FnMut(&[Utf8PathBuf]) -> eyre::Result<()>,
     R: FnOnce() -> eyre::Result<()>,
 {
-    watch_paths_with_strategy(
-        watched_paths,
-        assets_dir,
-        default_watch_strategy(),
-        quiet,
-        ready,
-        &mut action,
-    )
-}
-
-fn watch_paths_with_strategy<P: AsRef<Utf8Path>, F, R>(
-    watched_paths: &[P],
-    assets_dir: &Utf8Path,
-    strategy: WatchStrategy,
-    quiet: bool,
-    ready: R,
-    action: &mut F,
-) -> eyre::Result<()>
-where
-    F: FnMut(&[Utf8PathBuf]) -> eyre::Result<()>,
-    R: FnOnce() -> eyre::Result<()>,
-{
+    let explicit_paths: Vec<_> = watched_paths
+        .iter()
+        .map(|path| {
+            let path = path.as_ref();
+            path.canonicalize_utf8().unwrap_or_else(|_| path.to_owned())
+        })
+        .collect();
     let (tx, rx) = std::sync::mpsc::channel();
-    let mut batcher = WatchBatcher::new(strategy.debounce);
+    let mut batcher = WatchBatcher::new(WATCH_DEBOUNCE);
     let mut fold_state = WatchChangeFoldState::default();
 
     // Automatically select the best implementation for your platform.
@@ -64,7 +55,7 @@ where
         let watched_path = watched_path.as_ref();
         if !watched_path.exists() {
             let watched_path_display = display_watch_path(watched_path);
-            match (strategy.missing_path_level)(watched_path, assets_dir) {
+            match missing_path_level(watched_path, assets_dir) {
                 MissingPathLevel::Hint => {
                     color_print::ceprintln!(
                         "<dim>[watch] Hint: Optional path \"{}\" does not exist, skipping.</>",
@@ -105,12 +96,12 @@ where
                 // Generally, we only need to listen for changes in file content `ModifyKind::Data(_)`,
                 // but since notify-rs always only gets `Modify(Any)` on Windows,
                 // we expand the listening scope here.
-                if let Some(paths) = collect_event_paths(event, strategy) {
+                if let Some(paths) = collect_event_paths(event, &explicit_paths) {
                     batcher.push_paths(paths, Instant::now());
                 }
 
                 while let Ok(Ok(event)) = rx.try_recv() {
-                    if let Some(paths) = collect_event_paths(event, strategy) {
+                    if let Some(paths) = collect_event_paths(event, &explicit_paths) {
                         batcher.push_paths(paths, Instant::now());
                     }
                 }
@@ -125,7 +116,7 @@ where
                 let Some(changed_paths) = batcher.take_ready(Instant::now()) else {
                     continue;
                 };
-                process_batch(&changed_paths, &mut fold_state, strategy, quiet, action)?;
+                process_batch(&changed_paths, &mut fold_state, quiet, &mut action)?;
             }
             Err(RecvTimeoutError::Disconnected) => break,
         }
@@ -137,7 +128,6 @@ where
 fn process_batch<F>(
     changed_paths: &[Utf8PathBuf],
     fold_state: &mut WatchChangeFoldState,
-    strategy: WatchStrategy,
     quiet: bool,
     action: &mut F,
 ) -> eyre::Result<()>
@@ -145,7 +135,7 @@ where
     F: FnMut(&[Utf8PathBuf]) -> eyre::Result<()>,
 {
     if !quiet {
-        for line in (strategy.format_change_lines)(fold_state, changed_paths) {
+        for line in fold_watch_change_lines(fold_state, changed_paths) {
             println!("{line}");
         }
         std::io::stdout().flush()?;
@@ -157,8 +147,11 @@ where
     Ok(())
 }
 
-fn collect_event_paths(event: notify::Event, strategy: WatchStrategy) -> Option<Vec<Utf8PathBuf>> {
-    if !(strategy.should_handle_event)(&event.kind) {
+fn collect_event_paths(
+    event: notify::Event,
+    explicit_paths: &[Utf8PathBuf],
+) -> Option<Vec<Utf8PathBuf>> {
+    if !should_handle_watch_event(&event.kind) {
         return None;
     }
     Some(
@@ -166,6 +159,12 @@ fn collect_event_paths(event: notify::Event, strategy: WatchStrategy) -> Option<
             .paths
             .iter()
             .filter_map(|path| Utf8PathBuf::from_path_buf(path.clone()).ok())
+            .filter(|path| {
+                !path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
+                    || explicit_paths.contains(path)
+            })
             .collect::<Vec<_>>(),
     )
 }

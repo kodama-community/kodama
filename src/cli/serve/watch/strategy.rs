@@ -7,27 +7,17 @@ use std::time::{Duration, Instant};
 use camino::{Utf8Path, Utf8PathBuf};
 use notify::{EventKind, RecursiveMode};
 
+const IMPORT_FILES: [&str; 4] = [
+    "import-meta.html",
+    "import-style.html",
+    "import-font.html",
+    "import-math.html",
+];
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum MissingPathLevel {
     Hint,
     Warning,
-}
-
-#[derive(Clone, Copy)]
-pub(super) struct WatchStrategy {
-    pub(super) debounce: Duration,
-    pub(super) should_handle_event: fn(&EventKind) -> bool,
-    pub(super) format_change_lines: fn(&mut WatchChangeFoldState, &[Utf8PathBuf]) -> Vec<String>,
-    pub(super) missing_path_level: fn(&Utf8Path, &Utf8Path) -> MissingPathLevel,
-}
-
-pub(super) fn default_watch_strategy() -> WatchStrategy {
-    WatchStrategy {
-        debounce: Duration::from_millis(250),
-        should_handle_event: should_handle_watch_event,
-        format_change_lines: fold_watch_change_lines,
-        missing_path_level: default_missing_path_level,
-    }
 }
 
 pub(super) struct WatchBatcher {
@@ -108,13 +98,13 @@ pub(in crate::cli::serve) fn compose_watched_paths(
 ) -> Vec<Utf8PathBuf> {
     let mut watched_paths = vec![trees_dir, assets_dir];
     watched_paths.extend(config_file);
-    watched_paths.extend([
-        root_dir.join("import-meta.html"),
-        root_dir.join("import-style.html"),
-        root_dir.join("import-font.html"),
-        root_dir.join("import-math.html"),
-    ]);
-    watched_paths.extend(theme_paths);
+    watched_paths.extend(IMPORT_FILES.map(|name| root_dir.join(name)));
+    // HTML inputs are limited to the fixed import paths above.
+    watched_paths.extend(theme_paths.into_iter().filter(|path| {
+        !path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))
+    }));
     watched_paths
 }
 
@@ -178,25 +168,10 @@ pub(super) fn fold_watch_change_lines(
     lines
 }
 
-fn is_optional_import_watch_path(path: &Utf8Path) -> bool {
-    matches!(
-        path.file_name(),
-        Some("import-meta.html")
-            | Some("import-style.html")
-            | Some("import-font.html")
-            | Some("import-math.html")
-    )
-}
-
-fn is_optional_missing_watch_path(path: &Utf8Path, assets_dir: &Utf8Path) -> bool {
-    is_optional_import_watch_path(path) || path == assets_dir
-}
-
-pub(super) fn default_missing_path_level(
-    path: &Utf8Path,
-    assets_dir: &Utf8Path,
-) -> MissingPathLevel {
-    if is_optional_missing_watch_path(path, assets_dir) {
+pub(super) fn missing_path_level(path: &Utf8Path, assets_dir: &Utf8Path) -> MissingPathLevel {
+    if path == assets_dir
+        || path.file_name().is_some_and(|name| IMPORT_FILES.contains(&name))
+    {
         MissingPathLevel::Hint
     } else {
         MissingPathLevel::Warning
@@ -226,7 +201,7 @@ mod tests {
         let trees = root.join("trees");
         let assets = root.join("assets");
         let config = root.join("Kodama.toml");
-        let theme = root.join("themes/theme.html");
+        let theme = root.join("themes/theme.css");
 
         let watched = compose_watched_paths(
             root.as_path(),
@@ -299,30 +274,25 @@ mod tests {
     }
 
     #[test]
-    fn test_is_optional_import_watch_path() {
-        assert!(is_optional_import_watch_path(Utf8Path::new(
-            "site/import-meta.html"
-        )));
-        assert!(is_optional_import_watch_path(Utf8Path::new(
-            "site/import-style.html"
-        )));
-        assert!(!is_optional_import_watch_path(Utf8Path::new(
-            "site/themes/theme.html"
-        )));
-    }
-
-    #[test]
-    fn test_is_optional_missing_watch_path_includes_assets() {
+    fn test_missing_path_level() {
         let assets = Utf8Path::new("site/assets");
-        assert!(is_optional_missing_watch_path(
-            Utf8Path::new("site/import-font.html"),
-            assets
-        ));
-        assert!(is_optional_missing_watch_path(assets, assets));
-        assert!(!is_optional_missing_watch_path(
-            Utf8Path::new("site/Kodama.toml"),
-            assets
-        ));
+        for path in [
+            "site/import-meta.html",
+            "site/import-style.html",
+            "site/import-font.html",
+            "site/assets",
+        ] {
+            assert_eq!(
+                missing_path_level(Utf8Path::new(path), assets),
+                MissingPathLevel::Hint
+            );
+        }
+        for path in ["site/themes/theme.html", "site/Kodama.toml"] {
+            assert_eq!(
+                missing_path_level(Utf8Path::new(path), assets),
+                MissingPathLevel::Warning
+            );
+        }
     }
 
     #[test]
@@ -392,38 +362,6 @@ mod tests {
 
         let fourth = fold_watch_change_lines(&mut state, &[Utf8PathBuf::from("site/trees/a.md")]);
         assert_eq!(fourth, vec!["[watch] Change: \"site/trees/a.md\""]);
-    }
-
-    fn custom_change_lines(_: &mut WatchChangeFoldState, _: &[Utf8PathBuf]) -> Vec<String> {
-        vec!["[watch] custom".to_string()]
-    }
-
-    fn always_warning(_: &Utf8Path, _: &Utf8Path) -> MissingPathLevel {
-        MissingPathLevel::Warning
-    }
-
-    #[test]
-    fn test_watch_strategy_supports_custom_change_formatter() {
-        let strategy = WatchStrategy {
-            format_change_lines: custom_change_lines,
-            ..default_watch_strategy()
-        };
-        let mut fold_state = WatchChangeFoldState::default();
-        let lines = (strategy.format_change_lines)(&mut fold_state, &[Utf8PathBuf::from("a.md")]);
-        assert_eq!(lines, vec!["[watch] custom"]);
-    }
-
-    #[test]
-    fn test_watch_strategy_supports_custom_missing_path_level() {
-        let strategy = WatchStrategy {
-            missing_path_level: always_warning,
-            ..default_watch_strategy()
-        };
-        let level = (strategy.missing_path_level)(
-            Utf8Path::new("site/import-meta.html"),
-            Utf8Path::new("site/assets"),
-        );
-        assert_eq!(level, MissingPathLevel::Warning);
     }
 
     #[test]

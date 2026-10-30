@@ -10,7 +10,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8PathBuf;
 use eyre::{eyre, WrapErr};
 
 use crate::{
@@ -79,7 +79,7 @@ pub fn no_cache_enabled() -> &'static bool {
 
 /// This function invoked the [`environment::init_environment`] function to initialize the environment
 pub fn build(command: &BuildCommand) -> eyre::Result<()> {
-    build_with(
+    build_with_dirty(
         &config_arg::resolve(command.config.as_ref(), command.no_config)?,
         BuildMode::Publish,
         BuildOptions {
@@ -88,15 +88,8 @@ pub fn build(command: &BuildCommand) -> eyre::Result<()> {
             no_cache: command.no_cache,
             outputs: command.output.resolve(compiler::CompileOutputs::default()),
         },
+        None,
     )
-}
-
-pub fn build_with(
-    source: &config::ConfigSource,
-    mode: BuildMode,
-    options: BuildOptions,
-) -> eyre::Result<()> {
-    build_with_dirty(source, mode, options, None)
 }
 
 pub fn build_with_dirty(
@@ -172,14 +165,10 @@ fn compile_with_mode(
     compiler::compile(workspace, dirty_paths, outputs)
 }
 
-fn serve_session_lock() -> &'static Mutex<Option<compiler::ServeCompileSession>> {
-    SERVE_SESSION.get_or_init(|| Mutex::new(None))
-}
-
 fn with_serve_session<R>(
     f: impl FnOnce(&mut Option<compiler::ServeCompileSession>) -> eyre::Result<R>,
 ) -> eyre::Result<R> {
-    let lock = serve_session_lock();
+    let lock = SERVE_SESSION.get_or_init(|| Mutex::new(None));
     match lock.lock() {
         Ok(mut guard) => f(&mut guard),
         Err(poisoned) => {
@@ -232,26 +221,22 @@ fn clear_serve_session() {
 
 fn export_static_files() -> eyre::Result<()> {
     if !environment::inline_css() {
-        sync_css_file(html::html_main_style(), "main.css")?;
+        atomic_text::sync_text_output(
+            &output_path("main.css"),
+            html::html_main_style(),
+            "CSS file",
+        )?;
     }
 
     if !environment::inline_script() {
-        sync_script_file(html::html_main_script(), "main.js")?;
+        atomic_text::sync_text_output(
+            &output_path("main.js"),
+            html::html_main_script(),
+            "Script file",
+        )?;
     }
 
     Ok(())
-}
-
-fn sync_css_file(css_content: &str, name: &str) -> eyre::Result<()> {
-    let path = output_path(name);
-    let path = Utf8Path::new(&path);
-    atomic_text::sync_text_output(path, css_content, "CSS file")
-}
-
-fn sync_script_file(script_content: &str, name: &str) -> eyre::Result<()> {
-    let path = output_path(name);
-    let path = Utf8Path::new(&path);
-    atomic_text::sync_text_output(path, script_content, "Script file")
 }
 
 /// Synchronize the assets directory [`config::assets_dir`] with the
@@ -273,25 +258,16 @@ fn write_reload_marker(mode: BuildMode) -> eyre::Result<()> {
 
     let output_dir = environment::output_dir();
     let marker_path = environment::reload_marker_path(output_dir.as_path());
-    write_reload_marker_atomically(marker_path.as_path(), &next_reload_marker_stamp())?;
-    Ok(())
+    atomic_text::sync_text_output(&marker_path, &next_reload_marker_stamp(), "reload marker")
 }
 
 fn next_reload_marker_stamp() -> String {
-    next_atomic_write_stamp()
-}
-
-fn next_atomic_write_stamp() -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
     let sequence = ATOMIC_WRITE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     format!("{nanos}-{sequence}")
-}
-
-fn write_reload_marker_atomically(marker_path: &Utf8Path, stamp: &str) -> eyre::Result<()> {
-    atomic_text::sync_text_output(marker_path, stamp, "reload marker")
 }
 
 #[cfg(test)]
@@ -308,15 +284,15 @@ mod tests {
     }
 
     #[test]
-    fn test_write_reload_marker_atomically_overwrites() {
+    fn test_reload_marker_output_overwrites() {
         let base = crate::test_io::case_dir("reload-marker");
         let marker = base.join("serve/kodama.reload");
 
-        write_reload_marker_atomically(marker.as_path(), "v1").unwrap();
+        atomic_text::sync_text_output(&marker, "v1", "reload marker").unwrap();
         let first = fs::read_to_string(marker.as_std_path()).unwrap();
         assert_eq!(first, "v1");
 
-        write_reload_marker_atomically(marker.as_path(), "v2").unwrap();
+        atomic_text::sync_text_output(&marker, "v2", "reload marker").unwrap();
         let second = fs::read_to_string(marker.as_std_path()).unwrap();
         assert_eq!(second, "v2");
 
@@ -324,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sync_css_file_overwrites_when_content_changes() {
+    fn test_css_output_overwrites_when_content_changes() {
         let base = crate::test_io::case_dir("css-sync");
         let css_path = base.join("build/main.css");
 
@@ -342,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sync_script_file_overwrites_when_content_changes() {
+    fn test_script_output_overwrites_when_content_changes() {
         let base = crate::test_io::case_dir("script-sync");
         let script_path = base.join("build/main.js");
 

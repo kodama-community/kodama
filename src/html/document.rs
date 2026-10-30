@@ -37,19 +37,19 @@ pub fn html_doc(
 <meta name="viewport" content="width=device-width">"#
             (format!("<title>{page_title}</title>"))
             (format!(r#"<link rel="icon" href="{}assets/favicon.ico" />"#, base_url))
-            (html_import_meta())
+            (environment::import_meta_html())
             (html_scripts())
             (html_live_reload())
             // math should be loaded after scripts to handle dynamic content
-            (html_import_math())
+            (environment::import_math_html())
             (typst_styles.concat())
             // main styles should be loaded after math to override formula font size
             (html_static_css())
             (html_dynamic_css())
             // fonts should be loaded after `static_css` to handle override default fonts
-            (html_import_fonts())
+            (environment::import_fonts_html())
             // custom styles should be loaded last to override other styles
-            (html_import_style())
+            (environment::import_style_html())
         }
         body {
             (header_html)
@@ -106,22 +106,6 @@ pub fn html_dynamic_css() -> String {
     );
 
     format!("<style>\n{grid_wrapper}\n</style>")
-}
-
-pub fn html_import_meta() -> String {
-    environment::import_meta_html()
-}
-
-pub fn html_import_style() -> String {
-    environment::import_style_html()
-}
-
-pub fn html_import_fonts() -> String {
-    environment::import_fonts_html()
-}
-
-pub fn html_import_math() -> String {
-    environment::import_math_html()
 }
 
 pub fn html_live_reload() -> String {

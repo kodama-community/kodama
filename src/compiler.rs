@@ -127,7 +127,7 @@ pub(super) fn compile_from_shallows(
 ) -> eyre::Result<()> {
     let mut all_slugs: Vec<Slug> = shallows
         .iter()
-        .filter_map(|(slug, section)| (!is_internal_anonymous_subtree(section)).then_some(*slug))
+        .filter_map(|(slug, section)| (!section.metadata.internal_anon_subtree()).then_some(*slug))
         .collect();
     all_slugs.sort();
 
@@ -145,7 +145,7 @@ pub(super) fn compile_from_shallows(
                     .filter(|slug| {
                         shallows
                             .get(slug)
-                            .is_some_and(|section| !is_internal_anonymous_subtree(section))
+                            .is_some_and(|section| !section.metadata.internal_anon_subtree())
                     })
                     .collect()
             }
@@ -212,13 +212,9 @@ pub(super) fn write_compiled_state(
 fn indexes_from_shallows(shallows: &UnresolvedSections) -> HashMap<Slug, HTMLMetaData> {
     shallows
         .iter()
-        .filter(|(_, section)| !is_internal_anonymous_subtree(section))
+        .filter(|(_, section)| !section.metadata.internal_anon_subtree())
         .map(|(slug, section)| (*slug, section.metadata.clone()))
         .collect()
-}
-
-fn is_internal_anonymous_subtree(section: &UnresolvedSection) -> bool {
-    section.metadata.internal_anon_subtree()
 }
 
 pub(super) fn collect_shallows(

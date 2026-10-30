@@ -232,7 +232,7 @@ impl Writer {
         let slug = section.slug()?;
         let title = section.metadata.title().map_or("", |s| s.as_str());
         let page_title = section.metadata.page_title().unwrap_or("");
-        let use_hash_href = Writer::is_internal_anonymous_subtree(section);
+        let use_hash_href = section.metadata.internal_anon_subtree();
         Ok(html::catalog_item(
             slug,
             title,
@@ -401,10 +401,6 @@ impl Writer {
             .taxon()
             .map_or("", |s| s.as_str())
             .to_string()
-    }
-
-    fn is_internal_anonymous_subtree(section: &Section) -> bool {
-        section.metadata.internal_anon_subtree()
     }
 }
 

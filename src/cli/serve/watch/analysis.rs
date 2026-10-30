@@ -80,10 +80,6 @@ fn relative_tree_path(
         })
 }
 
-fn is_source_extension(ext: Option<&str>) -> bool {
-    ext.is_some_and(|e| crate::environment::kind_from_extension(e).is_some())
-}
-
 fn is_temp_like_path(path: &Utf8Path) -> bool {
     let Some(file_name) = path.file_name() else {
         return false;
@@ -136,7 +132,11 @@ pub(in crate::cli::serve) fn analyze_watch_changes(
         }
 
         if let Some(relative) = relative_tree_path(path.as_path(), trees_dir, trees_dir_canonical) {
-            if is_source_extension(relative.extension()) {
+            if relative
+                .extension()
+                .and_then(crate::environment::kind_from_extension)
+                .is_some()
+            {
                 stats.tree_source_paths += 1;
             } else {
                 stats.tree_dependency_paths += 1;

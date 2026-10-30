@@ -52,20 +52,13 @@ pub struct CompileState {
 type UnresolvedSections = HashMap<Slug, UnresolvedSection>;
 
 pub fn compile_all(shallows: &UnresolvedSections) -> eyre::Result<CompileState> {
-    compile_all_with_missing_index_warning(shallows, true)
+    compile_with_cache(shallows, true, None)
 }
 
 pub fn compile_all_without_missing_index_warning(
     shallows: &UnresolvedSections,
 ) -> eyre::Result<CompileState> {
-    compile_all_with_missing_index_warning(shallows, false)
-}
-
-fn compile_all_with_missing_index_warning(
-    shallows: &UnresolvedSections,
-    emit_missing_index_warning: bool,
-) -> eyre::Result<CompileState> {
-    compile_with_cache(shallows, emit_missing_index_warning, None)
+    compile_with_cache(shallows, false, None)
 }
 
 fn compile_with_cache(

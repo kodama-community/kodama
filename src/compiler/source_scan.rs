@@ -36,10 +36,6 @@ fn to_slug_kind(source_dir: &Utf8Path, p: &Utf8Path) -> Option<(Slug, SectionKin
 
 /// Collect all source file paths in `<trees>` dir.
 pub fn all_trees_source(trees_dir: &Utf8Path) -> eyre::Result<Workspace> {
-    all_trees_source_inner(trees_dir)
-}
-
-fn all_trees_source_inner(trees_dir: &Utf8Path) -> eyre::Result<Workspace> {
     let mut slug_exts = HashMap::new();
 
     let failed_to_read_dir = |dir: &Utf8Path| eyre!("failed to read directory `{}`", dir);
