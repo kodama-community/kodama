@@ -20,7 +20,7 @@ pub fn test_table_td() {
     let events = TextElaborator::process(events);
     let events = Embed::process(events, mocked_slug);
 
-    let content = normalize_html_content(to_contents(events));
+    let content = normalize_html_content(to_contents(events, mocked_slug));
     assert_eq!(content.as_str().unwrap(), "<table><thead><tr><th>a</th><th>b</th></tr></thead><tbody>\n<tr><td>c</td><td>d</td></tr>\n</tbody></table>\n");
 }
 
@@ -36,7 +36,7 @@ pub fn test_code_block() {
     let events = TextElaborator::process(events);
     let events = Embed::process(events, mocked_slug);
 
-    let content = normalize_html_content(to_contents(events));
+    let content = normalize_html_content(to_contents(events, mocked_slug));
     assert_eq!(
         content.as_str().unwrap(),
         "<pre><code class=\"language-rs\">let x = 1;\n</code></pre>\n"
@@ -56,7 +56,7 @@ pub fn test_reference_link() {
     let events = TextElaborator::process(events);
     let events = Embed::process(events, mocked_slug);
 
-    let content = normalize_html_content(to_contents(events));
+    let content = normalize_html_content(to_contents(events, mocked_slug));
     assert_eq!(content.as_str().unwrap(), "<p><span class=\"link external\"><a href=\"https://example.com\" title=\"Bob [https://example.com]\">Bob</a></span></p>\n");
 }
 

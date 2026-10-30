@@ -57,11 +57,27 @@ impl<E> TypstImage<E> {
 /// Collects a leaf event into the content buffer according to the current
 /// state: raw source text for inline typst / shared imports, HTML-escaped text
 /// for figure captions.
-fn collect(state: &State, content: &mut Option<String>, e: Event<'_>) {
+fn collect(state: &State, content: &mut Option<String>, e: Event<'_>, slug: Slug) {
     let c = content.get_or_insert_default();
-    let escape = match state {
-        State::ImageSpan | State::ImageBlock | State::ImageCode => Escape::Body,
-        _ => Escape::Raw,
+    let is_caption = matches!(
+        state,
+        State::ImageSpan | State::ImageBlock | State::ImageCode
+    );
+    if is_caption {
+        let formula = match &e {
+            Event::InlineMath(source) => Some((source.as_ref(), false)),
+            Event::DisplayMath(source) => Some((source.as_ref(), true)),
+            _ => None,
+        };
+        if let Some((source, display)) = formula {
+            c.push_str(&super::math::render_html(source, display, slug));
+            return;
+        }
+    }
+    let escape = if is_caption {
+        Escape::Body
+    } else {
+        Escape::Raw
     };
     write_leaf(c, e, escape, true);
 }
@@ -299,7 +315,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
                 }
                 _ => {
                     if allow_inline(&self.state) {
-                        collect(&self.state, &mut self.content, e);
+                        collect(&self.state, &mut self.content, e, self.current_slug);
                     } else {
                         return Some(e);
                     }

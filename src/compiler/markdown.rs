@@ -153,7 +153,7 @@ pub(super) fn parse_markdown_source(source: &str, slug: Slug) -> eyre::Result<Un
         let events =
             TextElaborator::process(events).with_enabled(environment::elaborate_cjk_text());
         let events = Embed::process(events, slug);
-        normalize_html_content(to_contents(events))
+        normalize_html_content(to_contents(events, slug))
     };
     if let Some(err) = metadata_error {
         return Err(err).wrap_err("failed to parse metadata");
@@ -170,7 +170,7 @@ pub fn parse_spanned_markdown(markdown_input: &str, slug: Slug) -> HTMLContent {
     let events = TypstImage::process(events, slug);
     let events = TextElaborator::process(events).with_enabled(environment::elaborate_cjk_text());
     let events = Embed::process(events, slug);
-    normalize_html_content(to_contents(events))
+    normalize_html_content(to_contents(events, slug))
 }
 
 fn normalize_html_content(mut content: Vec<LazyContent>) -> HTMLContent {

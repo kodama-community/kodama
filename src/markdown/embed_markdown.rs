@@ -4,7 +4,9 @@
 
 use super::{
     content::EventExtended,
-    inline_content::{is_formatting_end, is_formatting_start, warn_unexpected},
+    inline_content::{
+        is_formatting_end, is_formatting_start, render_label, render_source_label, warn_unexpected,
+    },
     link_action::url_action,
     path_resolution::{relocate_trees_path_with_trees_root, resolve_section_url},
     url::{is_allowed_scheme, is_unsafe_scheme, scheme_name},
@@ -24,7 +26,7 @@ use crate::{
     slug::Slug,
 };
 use camino::Utf8PathBuf;
-use pulldown_cmark::{html, Event, Tag, TagEnd};
+use pulldown_cmark::{Event, Tag, TagEnd};
 
 static INCLUDE_READ_ERROR_FLAG: AtomicBool = AtomicBool::new(false);
 
@@ -152,9 +154,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                                     option = opt;
                                     *t = rest.into();
                                 }
-                                let mut title = String::new();
-                                html::push_html(&mut title, content.into_iter());
-                                Some(title)
+                                Some(render_label(content.into_iter(), self.current_slug))
                             } else {
                                 None
                             };
@@ -166,9 +166,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                             let language_tag = if content.is_empty() {
                                 Some("plain".to_string())
                             } else {
-                                let mut text = String::new();
-                                html::push_html(&mut text, content.into_iter());
-                                Some(text)
+                                Some(render_source_label(content.into_iter()))
                             };
 
                             let include_path = root_dir().join(&url);
@@ -191,16 +189,13 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                             let text = if content.is_empty() {
                                 None
                             } else {
-                                let mut text = String::new();
-                                html::push_html(&mut text, content.into_iter());
-                                Some(text)
+                                Some(render_label(content.into_iter(), self.current_slug))
                             };
                             return Some(LocalLink { url, text }.into());
                         }
                         State::ExternalLink => {
                             let (url, content) = self.exit();
-                            let mut text = String::new();
-                            html::push_html(&mut text, content.into_iter());
+                            let text = render_label(content.into_iter(), self.current_slug);
                             let formatted_title;
                             let title = if url == text {
                                 &url
@@ -213,8 +208,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                         }
                         State::AssetFile => {
                             let (url, content) = self.exit();
-                            let mut text = String::new();
-                            html::push_html(&mut text, content.into_iter());
+                            let text = render_label(content.into_iter(), self.current_slug);
                             let html = html_link(&url, &text, &text, State::AssetFile.strify());
                             return Some(Event::Html(html.into()).into());
                         }
@@ -223,8 +217,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                             let text = if content.is_empty() {
                                 String::new()
                             } else {
-                                let mut html = String::new();
-                                html::push_html(&mut html, content.into_iter());
+                                let html = render_source_label(content.into_iter());
                                 HTMLContent::Plain(html).remove_all_tags()
                             };
                             return Some(Event::Text(text.into()).into());
@@ -248,23 +241,6 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                         warn_unexpected("block-level end tag", "link text");
                     }
                 }
-                Event::InlineMath(ref math) => {
-                    let replaced = Event::Text(format!("${math}$").into());
-                    if is_inline_allowed(&self.state) {
-                        self.content.push(replaced);
-                    } else {
-                        return Some(replaced.into());
-                    }
-                }
-                // TODO: move away from mangling math manually
-                Event::DisplayMath(ref math) => {
-                    let replaced = Event::Text(format!("$${math}$$").into());
-                    if is_inline_allowed(&self.state) {
-                        self.content.push(replaced);
-                    } else {
-                        return Some(replaced.into());
-                    }
-                }
                 Event::SoftBreak if is_inline_allowed(&self.state) => {
                     self.content.push(Event::Text(" ".into()));
                 }
@@ -272,6 +248,8 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                     warn_unexpected("rule or task list marker", "link text");
                 }
                 Event::Text(_)
+                | Event::InlineMath(_)
+                | Event::DisplayMath(_)
                 | Event::InlineHtml(_)
                 | Event::Code(_)
                 | Event::Html(_)
