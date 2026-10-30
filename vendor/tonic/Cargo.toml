@@ -1,0 +1,17 @@
+[package]
+name = "tonic"
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.96.1"
+description = "A port of the KaTeX parser with macro expansion, a typed AST, Unicode rendering, and an optional HTML backend"
+license = "AGPL-3.0"
+repository = "https://github.com/kodama-community/tonic"
+readme = "README.md"
+keywords = ["katex", "latex", "math", "parser", "tex"]
+categories = ["mathematics", "parser-implementations"]
+
+[dependencies]
+
+[features]
+default = []
+html = []

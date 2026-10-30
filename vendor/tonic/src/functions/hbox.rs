@@ -1,0 +1,29 @@
+use crate::ast::ParseNode;
+use crate::error::ParseError;
+use crate::function_registry::{ArgType, FunctionContext, FunctionParser, FunctionSpec};
+
+use super::{ord_argument, require_function_arg};
+
+pub(crate) fn hbox_spec() -> FunctionSpec {
+    FunctionSpec {
+        names: vec!["\\hbox".to_string()],
+        num_args: 1,
+        arg_types: vec![ArgType::TextArg],
+        allowed_in_text: true,
+        primitive: true,
+        handler: Some(hbox_handler),
+        ..Default::default()
+    }
+}
+
+fn hbox_handler(
+    _parser: &mut dyn FunctionParser,
+    context: &FunctionContext,
+    args: &[ParseNode],
+    _opt_args: &[Option<ParseNode>],
+) -> Result<ParseNode, ParseError> {
+    Ok(ParseNode::HBox {
+        mode: context.mode,
+        body: ord_argument(require_function_arg(args, 0, &context.func_name)?),
+    })
+}
