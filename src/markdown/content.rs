@@ -5,7 +5,10 @@
 use pulldown_cmark::Event;
 
 use crate::{
-    compiler::{section::{EmbedContent, LazyContents, LocalLink}, ParseDiagnostics},
+    compiler::{
+        section::{EmbedContent, LazyContents, LocalLink},
+        ParseDiagnostics,
+    },
     slug::Slug,
 };
 
@@ -37,7 +40,11 @@ impl<'e> From<Event<'e>> for EventExtended<'e> {
     }
 }
 
-pub fn to_contents<'e, I: Iterator<Item = EventExtended<'e>>>(iter: I, slug: Slug, diagnostics: &ParseDiagnostics) -> LazyContents {
+pub(crate) fn to_contents<'e, I: Iterator<Item = EventExtended<'e>>>(
+    iter: I,
+    slug: Slug,
+    diagnostics: &ParseDiagnostics,
+) -> LazyContents {
     HtmlWriter::new(iter, Vec::new(), slug, diagnostics).run()
 }
 

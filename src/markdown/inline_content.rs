@@ -52,7 +52,11 @@ pub fn warn_unexpected(what: &str, context: &str) {
 /// Serialize a collected link label or embed title. `Embed` has already limited
 /// this buffer to inline formatting and leaf events, so every math event here
 /// belongs to rich text (not image alt text or another raw-source context).
-pub fn render_label<'e>(events: impl Iterator<Item = Event<'e>>, slug: Slug, diagnostics: &ParseDiagnostics) -> String {
+pub(crate) fn render_label<'e>(
+    events: impl Iterator<Item = Event<'e>>,
+    slug: Slug,
+    diagnostics: &ParseDiagnostics,
+) -> String {
     let events = events.map(|event| match event {
         Event::InlineMath(source) => {
             Event::InlineHtml(math::render_html(&source, false, slug, diagnostics).into())

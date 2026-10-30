@@ -52,7 +52,10 @@ pub fn initialize(slug: Slug) -> eyre::Result<String> {
         .wrap_err_with(|| eyre!("failed to read markdown file `{:?}`", markdown_path))
 }
 
-pub fn parse_markdown_sections(source_slug: Slug, diagnostics: &ParseDiagnostics) -> eyre::Result<Vec<(Slug, UnresolvedSection)>> {
+pub(crate) fn parse_markdown_sections(
+    source_slug: Slug,
+    diagnostics: &ParseDiagnostics,
+) -> eyre::Result<Vec<(Slug, UnresolvedSection)>> {
     let source = initialize(source_slug)?;
     parse_markdown_sections_from_source(&source, source_slug, diagnostics)
 }
@@ -99,8 +102,8 @@ pub(super) fn parse_markdown_sections_from_source(
         }
         let subtree_source =
             compose_subtree_source(&extracted_nested.root_source, &shared_reference_definitions);
-        let mut section =
-            parse_markdown_source(&subtree_source, subtree.slug, diagnostics).wrap_err_with(|| {
+        let mut section = parse_markdown_source(&subtree_source, subtree.slug, diagnostics)
+            .wrap_err_with(|| {
                 eyre!(
                     "failed to parse subtree section `{}` (from `{}`)",
                     subtree.slug,
@@ -126,7 +129,11 @@ pub(super) fn parse_markdown_sections_from_source(
     Ok(sections)
 }
 
-pub(super) fn parse_markdown_source(source: &str, slug: Slug, diagnostics: &ParseDiagnostics) -> eyre::Result<UnresolvedSection> {
+pub(super) fn parse_markdown_source(
+    source: &str,
+    slug: Slug,
+    diagnostics: &ParseDiagnostics,
+) -> eyre::Result<UnresolvedSection> {
     let mut metadata = HTMLMetaData::with_slug_ext(slug, environment::markdown_suffix());
 
     let events = pulldown_cmark::Parser::new_ext(source, OPTIONS);
@@ -163,7 +170,11 @@ pub(super) fn parse_markdown_source(source: &str, slug: Slug, diagnostics: &Pars
     Ok(UnresolvedSection { metadata, content })
 }
 
-pub fn parse_spanned_markdown(markdown_input: &str, slug: Slug, diagnostics: &ParseDiagnostics) -> HTMLContent {
+pub(crate) fn parse_spanned_markdown(
+    markdown_input: &str,
+    slug: Slug,
+    diagnostics: &ParseDiagnostics,
+) -> HTMLContent {
     let events = pulldown_cmark::Parser::new_ext(markdown_input, OPTIONS);
     let events = filter_raw_html(events, environment::allow_unsafe_html());
     let events = ignore_paragraph(events);

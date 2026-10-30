@@ -37,7 +37,11 @@ pub struct TypstImage<'d, E> {
 }
 
 impl<'d, E> TypstImage<'d, E> {
-    pub fn process(events: E, current_slug: Slug, diagnostics: &'d ParseDiagnostics) -> Self {
+    pub(crate) fn process(
+        events: E,
+        current_slug: Slug,
+        diagnostics: &'d ParseDiagnostics,
+    ) -> Self {
         Self {
             diagnostics,
             events,
@@ -60,7 +64,13 @@ impl<'d, E> TypstImage<'d, E> {
 /// Collects a leaf event into the content buffer according to the current
 /// state: raw source text for inline typst / shared imports, HTML-escaped text
 /// for figure captions.
-fn collect(state: &State, content: &mut Option<String>, e: Event<'_>, slug: Slug, diagnostics: &ParseDiagnostics) {
+fn collect(
+    state: &State,
+    content: &mut Option<String>,
+    e: Event<'_>,
+    slug: Slug,
+    diagnostics: &ParseDiagnostics,
+) {
     let c = content.get_or_insert_default();
     let is_caption = matches!(
         state,
@@ -73,7 +83,12 @@ fn collect(state: &State, content: &mut Option<String>, e: Event<'_>, slug: Slug
             _ => None,
         };
         if let Some((source, display)) = formula {
-            c.push_str(&super::math::render_html(source, display, slug, diagnostics));
+            c.push_str(&super::math::render_html(
+                source,
+                display,
+                slug,
+                diagnostics,
+            ));
             return;
         }
     }
@@ -141,9 +156,12 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<'_, E> {
                                 write_to_inline_html(typst_url, html_path)
                             };
                             let html = rendered.unwrap_or_else(|err| {
-                                self.diagnostics.borrow_mut().push(Diagnostic::fatal(format!(
-                                    "{err:?} at {}", self.current_slug,
-                                )));
+                                self.diagnostics
+                                    .borrow_mut()
+                                    .push(Diagnostic::fatal(format!(
+                                        "{err:?} at {}",
+                                        self.current_slug,
+                                    )));
                                 String::new()
                             });
 
@@ -299,7 +317,13 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<'_, E> {
                 }
                 _ => {
                     if allow_inline(&self.state) {
-                        collect(&self.state, &mut self.content, e, self.current_slug, self.diagnostics);
+                        collect(
+                            &self.state,
+                            &mut self.content,
+                            e,
+                            self.current_slug,
+                            self.diagnostics,
+                        );
                     } else {
                         return Some(e);
                     }
@@ -414,7 +438,8 @@ mod tests {
         crate::environment::mock_environment().unwrap();
         let source = "[a <b> *c* `d` $x$](fig.typ#:span)";
         let events = pulldown_cmark::Parser::new_ext(source, crate::compiler::markdown::OPTIONS);
-        let actual = TypstImage::process(events, Slug::new("index"), &ParseDiagnostics::default()).collect::<Vec<_>>();
+        let actual = TypstImage::process(events, Slug::new("index"), &ParseDiagnostics::default())
+            .collect::<Vec<_>>();
 
         let html = actual
             .iter()

@@ -65,7 +65,11 @@ pub fn test_reference_link() {
 
 #[test]
 pub fn test_parse_spanned_markdown_wraps_cjk_text() {
-    let content = parse_spanned_markdown("hello \u{4e2d}\u{6587} world", Slug::new("-"), &ParseDiagnostics::default());
+    let content = parse_spanned_markdown(
+        "hello \u{4e2d}\u{6587} world",
+        Slug::new("-"),
+        &ParseDiagnostics::default(),
+    );
     assert_eq!(
         content.as_str().unwrap(),
         "hello <span lang=\"zh\">\u{4e2d}\u{6587}</span> world"
@@ -74,7 +78,11 @@ pub fn test_parse_spanned_markdown_wraps_cjk_text() {
 
 #[test]
 pub fn test_parse_spanned_markdown_drops_raw_html_tags_when_disabled() {
-    let content = parse_spanned_markdown(r#"safe <span class="x">ok</span>"#, Slug::new("-"), &ParseDiagnostics::default());
+    let content = parse_spanned_markdown(
+        r#"safe <span class="x">ok</span>"#,
+        Slug::new("-"),
+        &ParseDiagnostics::default(),
+    );
     assert_eq!(content.as_str().unwrap(), "safe ok");
 }
 
@@ -104,8 +112,11 @@ allow-unsafe-html = true
             )
             .unwrap();
 
-            let content =
-                parse_spanned_markdown(r#"safe <span class="x">ok</span>"#, Slug::new("-"), &ParseDiagnostics::default());
+            let content = parse_spanned_markdown(
+                r#"safe <span class="x">ok</span>"#,
+                Slug::new("-"),
+                &ParseDiagnostics::default(),
+            );
             assert_eq!(
                 content.as_str().unwrap(),
                 r#"safe <span class="x">ok</span>"#
@@ -130,9 +141,12 @@ pub fn test_typst_figure_content_is_base_url_independent() {
         crate::environment::BuildMode::Publish,
         config,
         || {
-            let section =
-                parse_markdown_source("[](/guide/fig.typ#:block)", Slug::new("guide/index"), &ParseDiagnostics::default())
-                    .unwrap();
+            let section = parse_markdown_source(
+                "[](/guide/fig.typ#:block)",
+                Slug::new("guide/index"),
+                &ParseDiagnostics::default(),
+            )
+            .unwrap();
             let HTMLContent::Lazy(contents) = section.content else {
                 panic!("expected lazy content, got {:?}", section.content);
             };

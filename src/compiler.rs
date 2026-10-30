@@ -81,19 +81,31 @@ pub(crate) struct Diagnostic {
 
 impl Diagnostic {
     pub(crate) fn fatal(message: impl Into<String>) -> Self {
-        Self { severity: Severity::Fatal, message: message.into() }
+        Self {
+            severity: Severity::Fatal,
+            message: message.into(),
+        }
     }
 
     pub(crate) fn error(message: impl Into<String>) -> Self {
-        Self { severity: Severity::Error, message: message.into() }
+        Self {
+            severity: Severity::Error,
+            message: message.into(),
+        }
     }
 
     pub(crate) fn warning(message: impl Into<String>) -> Self {
-        Self { severity: Severity::Warning, message: message.into() }
+        Self {
+            severity: Severity::Warning,
+            message: message.into(),
+        }
     }
 
     pub(crate) fn hint(message: impl Into<String>) -> Self {
-        Self { severity: Severity::Hint, message: message.into() }
+        Self {
+            severity: Severity::Hint,
+            message: message.into(),
+        }
     }
 }
 
@@ -113,7 +125,7 @@ pub(super) fn report_build_diagnostics(diagnostics: &[Diagnostic]) -> eyre::Resu
         match diagnostic.severity {
             Severity::Fatal => fatal.push(diagnostic.message.as_str()),
             Severity::Error => color_print::ceprintln!("<r>{}</>", diagnostic.message),
-            Severity::Warning => color_print::ceprintln!("<y>{}</>", diagnostic.message),
+            Severity::Warning => color_print::ceprintln!("<y>Warning: {}</>", diagnostic.message),
             Severity::Hint => color_print::ceprintln!("<dim>{}</>", diagnostic.message),
         }
     }
@@ -349,14 +361,16 @@ pub(crate) fn parse_source_sections(
     kind: SectionKind,
 ) -> eyre::Result<ParseOutput> {
     let diagnostics = ParseDiagnostics::default();
-    let mut sections = match kind {
-        SectionKind::Markdown => parse_markdown_sections(source_slug, &diagnostics).wrap_err_with(|| {
-            eyre!(
-                "failed to parse markdown file `{}.{}`",
-                source_slug,
-                environment::suffix_for_kind(kind)
-            )
-        })?,
+    let parsed = match kind {
+        SectionKind::Markdown => {
+            parse_markdown_sections(source_slug, &diagnostics).wrap_err_with(|| {
+                eyre!(
+                    "failed to parse markdown file `{}.{}`",
+                    source_slug,
+                    environment::suffix_for_kind(kind)
+                )
+            })
+        }
         SectionKind::Typst => parse_typst_sections(source_slug, environment::typst_root_dir())
             .wrap_err_with(|| {
                 eyre!(
@@ -364,13 +378,22 @@ pub(crate) fn parse_source_sections(
                     source_slug,
                     environment::suffix_for_kind(kind)
                 )
-            })?,
+            }),
     };
+    let diagnostics = diagnostics.into_inner();
+    let mut sections = parsed.map_err(|error| {
+        diagnostics.iter().rev().fold(error, |error, diagnostic| {
+            error.wrap_err(diagnostic.message.clone())
+        })
+    })?;
 
     for (_, section) in &mut sections {
         section.metadata.compute_textual_attrs();
     }
-    Ok(ParseOutput { sections, diagnostics: diagnostics.into_inner() })
+    Ok(ParseOutput {
+        sections,
+        diagnostics,
+    })
 }
 
 pub(super) fn write_entry_cache(

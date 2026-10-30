@@ -19,7 +19,12 @@ fn delimited(source: &str, display: bool) -> String {
 /// wrap escaped, delimited source in a math span for browser rendering. Otherwise
 /// compile with independent macro state and show errors without a source fallback.
 /// Plain-text consumers must keep the original events and use `write_leaf`.
-pub fn render_html(source: &str, display: bool, slug: Slug, diagnostics: &ParseDiagnostics) -> String {
+pub(crate) fn render_html(
+    source: &str,
+    display: bool,
+    slug: Slug,
+    diagnostics: &ParseDiagnostics,
+) -> String {
     if !environment::pre_render_math() {
         let mode = if display { "display" } else { "inline" };
         let source = htmlize::escape_text(delimited(source, display));
@@ -42,7 +47,9 @@ pub fn render_html(source: &str, display: bool, slug: Slug, diagnostics: &ParseD
     match rendered {
         Ok(html) => html,
         Err(error) => {
-            diagnostics.borrow_mut().push(Diagnostic::error(format!("{error} at {slug}")));
+            diagnostics
+                .borrow_mut()
+                .push(Diagnostic::error(format!("{error} at {slug}")));
             htmlize::escape_text(error.to_string()).into_owned()
         }
     }

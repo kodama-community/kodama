@@ -18,7 +18,11 @@ pub struct Metadata<'m, E> {
 }
 
 impl<'m, E> Metadata<'m, E> {
-    pub fn process(events: E, metadata: &'m mut HTMLMetaData, diagnostics: &'m ParseDiagnostics) -> Self {
+    pub(crate) fn process(
+        events: E,
+        metadata: &'m mut HTMLMetaData,
+        diagnostics: &'m ParseDiagnostics,
+    ) -> Self {
         Self {
             events,
             diagnostics,
@@ -59,7 +63,11 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Metadata<'_, E> {
 /// `(I)` `x86_64-pc-windows-msvc` and `(II)` `aarch64-unknown-linux-musl`.
 /// `(I)` automatically splits the input by lines,
 /// while `(II)` receives the entire multi-line string as a whole.
-fn parse_metadata(s: &str, metadata: &mut HTMLMetaData, diagnostics: &ParseDiagnostics) -> eyre::Result<()> {
+fn parse_metadata(
+    s: &str,
+    metadata: &mut HTMLMetaData,
+    diagnostics: &ParseDiagnostics,
+) -> eyre::Result<()> {
     let current_slug = metadata
         .slug()
         .ok_or_else(|| eyre!("missing `slug` while parsing metadata block"))?;
@@ -133,7 +141,12 @@ mod tests {
         crate::environment::mock_environment().unwrap();
 
         let mut metadata = metadata_with_slug("index");
-        parse_metadata("page-title: 中文", &mut metadata, &ParseDiagnostics::default()).unwrap();
+        parse_metadata(
+            "page-title: 中文",
+            &mut metadata,
+            &ParseDiagnostics::default(),
+        )
+        .unwrap();
 
         let parsed = metadata.page_title().unwrap_or_default().to_string();
         assert_eq!(parsed, "中文");

@@ -63,14 +63,15 @@ pub(crate) fn push_inline_formula(shareds: String, source: String, current_slug:
     })
 }
 
-/// Compile all formulas collected during the current parse phase. Returns the
-/// compiled inline svg html in formula order.
+/// Compile all formulas collected during the current parse phase. Return HTML
+/// in formula order and diagnostics for failed positions, which remain empty.
 pub fn compile_inline_batch() -> eyre::Result<RenderedInlineBatch> {
     let pending = INLINE_BATCH.with(|batch| std::mem::take(&mut batch.borrow_mut().pending));
     let sources: HashSet<Slug> = pending.iter().map(|(_, _, slug)| *slug).collect();
     let ((contents, diagnostics), dependencies) =
         typst_cache::capture_dependencies(|| Ok(compile_pending(pending)))?;
-    let dependencies = if sources.is_empty() {
+    // Failed batches must not publish a successful dependency report.
+    let dependencies = if sources.is_empty() || !diagnostics.is_empty() {
         dependencies
     } else {
         typst_cache::share_inline_dependencies(dependencies)?
@@ -119,7 +120,8 @@ fn compile_pending(pending: Vec<(String, String, Slug)>) -> (Vec<String>, Vec<Di
                             match typst_cli::source_to_inline_svg(&src) {
                                 Ok(html) => results.push(html),
                                 Err(err) => {
-                                    diagnostics.push(Diagnostic::fatal(format!("{err:?} at {slug}")));
+                                    diagnostics
+                                        .push(Diagnostic::fatal(format!("{err:?} at {slug}")));
                                     results.push(String::new());
                                 }
                             }

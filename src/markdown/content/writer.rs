@@ -9,7 +9,10 @@ use pulldown_cmark::{
 };
 use pulldown_cmark_escape::{escape_href, escape_html, escape_html_body_text};
 
-use crate::compiler::{section::{LazyContent, LazyContents}, ParseDiagnostics};
+use crate::compiler::{
+    section::{LazyContent, LazyContents},
+    ParseDiagnostics,
+};
 use crate::markdown::inline_content::{write_leaf, Escape};
 use crate::markdown::math;
 use crate::markdown::url::{is_allowed_scheme, is_unsafe_scheme, scheme_name};
@@ -63,7 +66,12 @@ impl<'d, 'e, I> HtmlWriter<'d, 'e, I>
 where
     I: Iterator<Item = EventExtended<'e>>,
 {
-    pub(super) fn new(iter: I, contents: LazyContents, slug: Slug, diagnostics: &'d ParseDiagnostics) -> Self {
+    pub(super) fn new(
+        iter: I,
+        contents: LazyContents,
+        slug: Slug,
+        diagnostics: &'d ParseDiagnostics,
+    ) -> Self {
         Self {
             diagnostics,
             iter,
@@ -181,7 +189,12 @@ where
                 }
                 InlineMath(text) => {
                     self.ensure_paragraph_started();
-                    self.write(&math::render_html(&text, false, self.slug, self.diagnostics));
+                    self.write(&math::render_html(
+                        &text,
+                        false,
+                        self.slug,
+                        self.diagnostics,
+                    ));
                 }
                 DisplayMath(text) => {
                     self.ensure_paragraph_started();

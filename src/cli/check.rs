@@ -73,10 +73,7 @@ pub fn check(command: &CheckCommand) -> eyre::Result<()> {
         print_diagnostic(diagnostic);
     }
 
-    let errors = diagnostics
-        .iter()
-        .filter(|d| d.severity.is_error())
-        .count();
+    let errors = diagnostics.iter().filter(|d| d.severity.is_error()).count();
     let warnings = diagnostics
         .iter()
         .filter(|d| d.severity == Severity::Warning)
@@ -118,7 +115,14 @@ fn parse_shallows_no_cache(
         let suffix = environment::suffix_for_kind(kind);
         match compiler::parse_source_sections(slug, kind) {
             Ok(output) => {
-                diagnostics.extend(output.diagnostics);
+                // Rendering/read failures count as errors here, including include
+                // failures that ordinary builds report as warnings and render in place.
+                diagnostics.extend(
+                    output
+                        .diagnostics
+                        .into_iter()
+                        .map(|diagnostic| Diagnostic::error(diagnostic.message)),
+                );
                 for (section_slug, section) in output.sections {
                     if shallows.insert(section_slug, section).is_some() {
                         diagnostics.push(Diagnostic::error(format!(
@@ -198,7 +202,9 @@ fn resolve_subsection_slug(current_slug: Slug, url: &str) -> Slug {
 
 fn print_diagnostic(diagnostic: &Diagnostic) {
     match diagnostic.severity {
-        Severity::Fatal | Severity::Error => color_print::ceprintln!("<r>Error:</> {}", diagnostic.message),
+        Severity::Fatal | Severity::Error => {
+            color_print::ceprintln!("<r>Error:</> {}", diagnostic.message)
+        }
         Severity::Warning => color_print::ceprintln!("<y>Warning:</> {}", diagnostic.message),
         Severity::Hint => color_print::ceprintln!("<dim>Hint:</> {}", diagnostic.message),
     }

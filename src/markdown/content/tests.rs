@@ -30,7 +30,11 @@ fn test_embed_only_paragraph_emits_no_empty_wrapper() {
         EventExtended::from(Event::End(TagEnd::Paragraph)),
     ];
 
-    let contents = to_contents(events.into_iter(), Slug::new("index"), &ParseDiagnostics::default());
+    let contents = to_contents(
+        events.into_iter(),
+        Slug::new("index"),
+        &ParseDiagnostics::default(),
+    );
     assert_eq!(contents.len(), 1);
     assert!(matches!(contents.first(), Some(LazyContent::Embed(_))));
 }
@@ -41,7 +45,11 @@ fn test_empty_paragraph_is_dropped() {
         EventExtended::from(Event::Start(Tag::Paragraph)),
         EventExtended::from(Event::End(TagEnd::Paragraph)),
     ];
-    let contents = to_contents(events.into_iter(), Slug::new("index"), &ParseDiagnostics::default());
+    let contents = to_contents(
+        events.into_iter(),
+        Slug::new("index"),
+        &ParseDiagnostics::default(),
+    );
     assert!(contents.is_empty());
 }
 
@@ -55,7 +63,11 @@ fn test_local_link_stays_wrapped_in_paragraph() {
         }),
         EventExtended::from(Event::End(TagEnd::Paragraph)),
     ];
-    let contents = to_contents(events.into_iter(), Slug::new("index"), &ParseDiagnostics::default());
+    let contents = to_contents(
+        events.into_iter(),
+        Slug::new("index"),
+        &ParseDiagnostics::default(),
+    );
     assert_eq!(contents.len(), 3);
     assert!(matches!(
         contents.first(),
@@ -82,7 +94,11 @@ fn test_embed_splits_paragraph_without_empty_segments() {
         EventExtended::from(Event::End(TagEnd::Paragraph)),
     ];
 
-    let contents = to_contents(events.into_iter(), Slug::new("index"), &ParseDiagnostics::default());
+    let contents = to_contents(
+        events.into_iter(),
+        Slug::new("index"),
+        &ParseDiagnostics::default(),
+    );
     assert_eq!(contents.len(), 3);
     assert!(matches!(
         contents.first(),
@@ -108,7 +124,11 @@ fn test_writer_unsafe_link_renders_non_clickable_span() {
         EventExtended::from(Event::End(TagEnd::Link)),
     ];
 
-    let contents = to_contents(events.into_iter(), Slug::new("index"), &ParseDiagnostics::default());
+    let contents = to_contents(
+        events.into_iter(),
+        Slug::new("index"),
+        &ParseDiagnostics::default(),
+    );
     assert_eq!(
         joined_plain(&contents),
         r#"<span class="link unsafe">click</span>"#
@@ -128,7 +148,11 @@ fn test_writer_unsafe_image_renders_alt_text_without_img_tag() {
         EventExtended::from(Event::End(TagEnd::Image)),
     ];
 
-    let contents = to_contents(events.into_iter(), Slug::new("index"), &ParseDiagnostics::default());
+    let contents = to_contents(
+        events.into_iter(),
+        Slug::new("index"),
+        &ParseDiagnostics::default(),
+    );
     let html = joined_plain(&contents);
     assert_eq!(html, "alt");
     assert!(!html.contains("<img"));

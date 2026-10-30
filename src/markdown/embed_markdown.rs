@@ -14,7 +14,10 @@ use super::{
 use std::{fs, mem};
 
 use crate::{
-    compiler::{section::{EmbedContent, HTMLContent, LocalLink, SectionOption}, Diagnostic, ParseDiagnostics},
+    compiler::{
+        section::{EmbedContent, HTMLContent, LocalLink, SectionOption},
+        Diagnostic, ParseDiagnostics,
+    },
     environment::{assets_dir_without_root, root_dir, trees_dir_without_root},
     html::{html_code_block, html_link},
     markdown::link_action::State,
@@ -38,7 +41,11 @@ pub struct Embed<'d, 'e, E> {
 }
 
 impl<'d, 'e, E> Embed<'d, 'e, E> {
-    pub fn process(events: E, current_slug: Slug, diagnostics: &'d ParseDiagnostics) -> Self {
+    pub(crate) fn process(
+        events: E,
+        current_slug: Slug,
+        diagnostics: &'d ParseDiagnostics,
+    ) -> Self {
         Self::process_with_roots(
             events,
             current_slug,
@@ -141,7 +148,11 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'_, 'e, E> {
                                     option = opt;
                                     *t = rest.into();
                                 }
-                                Some(render_label(content.into_iter(), self.current_slug, self.diagnostics))
+                                Some(render_label(
+                                    content.into_iter(),
+                                    self.current_slug,
+                                    self.diagnostics,
+                                ))
                             } else {
                                 None
                             };
@@ -158,7 +169,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'_, 'e, E> {
 
                             let include_path = root_dir().join(&url);
                             let content = fs::read_to_string(&include_path).unwrap_or_else(|err| {
-                                self.diagnostics.borrow_mut().push(Diagnostic::error(format!(
+                                self.diagnostics.borrow_mut().push(Diagnostic::warning(format!(
                                     "failed to include file `{url}` resolved to `{include_path}` at `{}`: {err}",
                                     self.current_slug,
                                 )));
@@ -173,13 +184,21 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'_, 'e, E> {
                             let text = if content.is_empty() {
                                 None
                             } else {
-                                Some(render_label(content.into_iter(), self.current_slug, self.diagnostics))
+                                Some(render_label(
+                                    content.into_iter(),
+                                    self.current_slug,
+                                    self.diagnostics,
+                                ))
                             };
                             return Some(LocalLink { url, text }.into());
                         }
                         State::ExternalLink => {
                             let (url, content) = self.exit();
-                            let text = render_label(content.into_iter(), self.current_slug, self.diagnostics);
+                            let text = render_label(
+                                content.into_iter(),
+                                self.current_slug,
+                                self.diagnostics,
+                            );
                             let formatted_title;
                             let title = if url == text {
                                 &url
@@ -192,7 +211,11 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'_, 'e, E> {
                         }
                         State::AssetFile => {
                             let (url, content) = self.exit();
-                            let text = render_label(content.into_iter(), self.current_slug, self.diagnostics);
+                            let text = render_label(
+                                content.into_iter(),
+                                self.current_slug,
+                                self.diagnostics,
+                            );
                             let html = html_link(&url, &text, &text, State::AssetFile.strify());
                             return Some(Event::Html(html.into()).into());
                         }
