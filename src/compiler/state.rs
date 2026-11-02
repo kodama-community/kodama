@@ -78,7 +78,7 @@ fn compile_with_cache(
 
     let mut state = CompileState::new(residued, cached);
     let compiled_index = state.compile(shallows, Slug::new("index"))?;
-    if emit_missing_index_warning && compiled_index.is_none() {
+    if emit_missing_index_warning && !environment::is_free() && compiled_index.is_none() {
         color_print::ceprintln!(
             "<y>Warning: Missing `index` section, please provide `index.{}` or `index.{}`.</>",
             environment::markdown_suffix(),
@@ -263,8 +263,14 @@ impl CompileState {
 
                             let text = local_link.text.clone().unwrap_or(article_title_html);
 
+                            let mut href = environment::full_html_url(link_slug);
+                            if environment::is_free() {
+                                href.push_str(
+                                    crate::html::free_urls::split_suffix(&local_link.url).1,
+                                );
+                            }
                             let html = crate::html::html_link(
-                                &environment::full_html_url(link_slug),
+                                &href,
                                 &format!("{} [{}]", page_title_plain, link_slug),
                                 &text,
                                 crate::markdown::link_action::State::LocalLink.strify(),
@@ -739,6 +745,7 @@ mod tests {
             || {
                 let section = crate::compiler::markdown::parse_markdown_source(
                     "[](/guide/fig.typ#:block)",
+                    Slug::new("guide/index"),
                     Slug::new("guide/index"),
                 )
                 .unwrap();

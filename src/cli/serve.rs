@@ -28,14 +28,14 @@ use watch::{
 #[derive(clap::Args)]
 pub struct ServeCommand {
     /// Path to the configuration file (default: ./Kodama.toml).
-    #[arg(short, long, conflicts_with = "no_config")]
+    #[arg(short, long, conflicts_with_all = ["no_config", "free"])]
     config: Option<Utf8PathBuf>,
 
-    /// Serve with built-in defaults instead of a configuration file.
-    ///
-    /// The current directory must contain a `trees` directory. `[serve]` options
-    /// such as a fixed port therefore come from the defaults, not from a file.
-    #[arg(long, default_value_t = false)]
+    /// Compile and serve documents in place under the current directory, ignoring config.
+    #[arg(long)]
+    free: bool,
+
+    #[arg(long, hide = true)]
     no_config: bool,
 
     /// Enable verbose output.
@@ -102,7 +102,7 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
     }
 
     _ = LIVE_RELOAD.set(!command.disable_reload);
-    let source = config_arg::resolve(command.config.as_ref(), command.no_config)?;
+    let source = config_arg::resolve(command.config.as_ref(), command.free, command.no_config)?;
     let outputs = compile_outputs(command);
     let watch_stats = command.watch_stats;
     let print_json = command.print_json;
@@ -155,15 +155,21 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
     let trees_dir_canonical = trees_dir
         .canonicalize_utf8()
         .unwrap_or_else(|_| trees_dir.clone());
-    let watched_paths = compose_watched_paths(
-        root_dir.as_path(),
-        trees_dir.clone(),
-        assets_dir.clone(),
-        config_watch
-            .as_ref()
-            .map(|(config_file, _)| config_file.clone()),
-        crate::environment::theme_paths(),
-    );
+    let watched_paths = if command.free {
+        vec![root_dir.clone()]
+    } else {
+        compose_watched_paths(
+            root_dir.as_path(),
+            trees_dir.clone(),
+            assets_dir.clone(),
+            config_watch
+                .as_ref()
+                .map(|(config_file, _)| config_file.clone()),
+            crate::environment::theme_paths(),
+        )
+    };
+    let mut dependency_paths = crate::cli::build::serve_dependency_paths()?;
+    let mut free_build_failed = false;
     watch_paths(
         &watched_paths,
         assets_dir.as_path(),
@@ -178,6 +184,45 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
             Ok(())
         },
         |changed_paths| {
+            if command.free {
+                let dirty_paths: DirtySet = changed_paths
+                    .iter()
+                    .filter(|path| {
+                        let source = path.extension().is_some_and(|ext| {
+                            !matches!(
+                                environment::classify_source(ext),
+                                crate::slug::SourceRole::Unknown
+                            )
+                        });
+                        source
+                            || dependency_paths.contains(*path)
+                            || (!path.exists()
+                                && dependency_paths
+                                    .iter()
+                                    .any(|dependency| dependency.starts_with(path)))
+                    })
+                    .filter_map(|path| path.strip_prefix(&root_dir).ok().map(ToOwned::to_owned))
+                    .collect();
+                if watch_stats {
+                    color_print::ceprintln!(
+                        "<dim>[watch] Stats: total={}, dirty={}</>",
+                        changed_paths.len(),
+                        dirty_paths.len()
+                    );
+                }
+                if dirty_paths.is_empty() && !free_build_failed {
+                    crate::cli::build::write_reload_marker(BuildMode::Serve)?;
+                } else {
+                    let result = serve_build(Some(&dirty_paths));
+                    free_build_failed = result.is_err();
+                    result?;
+                    dependency_paths = crate::cli::build::serve_dependency_paths()?;
+                }
+                if print_json {
+                    print_preview_event("rebuilt")?;
+                }
+                return Ok(());
+            }
             let analysis = analyze_watch_changes(
                 changed_paths,
                 trees_dir.as_path(),
@@ -260,6 +305,7 @@ mod tests {
     fn test_compile_outputs_default_to_disabled_in_serve() {
         let command = ServeCommand {
             config: None,
+            free: false,
             no_config: false,
             verbose: false,
             verbose_skip: false,
@@ -278,6 +324,7 @@ mod tests {
     fn test_compile_outputs_can_be_enabled_in_serve() {
         let command = ServeCommand {
             config: None,
+            free: false,
             no_config: false,
             verbose: false,
             verbose_skip: false,
@@ -301,6 +348,7 @@ mod tests {
     fn test_compile_outputs_can_be_disabled_with_compat_flags_in_serve() {
         let command = ServeCommand {
             config: None,
+            free: false,
             no_config: false,
             verbose: false,
             verbose_skip: false,

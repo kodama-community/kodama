@@ -123,6 +123,11 @@ pub fn to_hash_id(slug_str: &str) -> String {
 
 pub fn to_slug<P: AsRef<Utf8Path>>(path: P) -> Slug {
     let path = path.as_ref();
+    let path = if crate::environment::is_free() {
+        Utf8Path::new(crate::html::free_urls::split_suffix(path.as_str()).0)
+    } else {
+        path
+    };
     let normalized = path_utils::pretty_path(path);
     let stripped = match path
         .extension()

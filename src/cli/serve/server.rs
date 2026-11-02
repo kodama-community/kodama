@@ -215,6 +215,23 @@ fn resolve_file(base: &Utf8Path) -> Option<Utf8PathBuf> {
 }
 
 fn serve_file(path: &Utf8Path, method: &str) -> Response {
+    if environment::is_free() {
+        let root = environment::root_dir();
+        let allowed = root
+            .canonicalize_utf8()
+            .ok()
+            .zip(path.canonicalize_utf8().ok())
+            .is_some_and(|(root, file)| {
+                file.strip_prefix(root).is_ok_and(|relative| {
+                    !relative
+                        .components()
+                        .any(|part| part.as_str().starts_with('.'))
+                })
+            });
+        if !allowed {
+            return error_response("403 Forbidden", "Forbidden");
+        }
+    }
     let Ok(data) = std::fs::read(path) else {
         return error_response("404 Not Found", "Not Found");
     };
@@ -246,7 +263,7 @@ fn resolve_path(output_dir: &Utf8Path, request_path: &str) -> Option<Utf8PathBuf
         if component.is_empty() || component == "." {
             continue;
         }
-        if component == ".." {
+        if component == ".." || (environment::is_free() && component.starts_with('.')) {
             return None;
         }
         joined.push(component);
@@ -275,7 +292,7 @@ fn percent_decode(input: &str) -> String {
 
 fn write_response(stream: &mut TcpStream, response: &Response) {
     let header = format!(
-        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
         response.status, response.content_type, response.content_length
     );
     let _ = stream.write_all(header.as_bytes());

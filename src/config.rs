@@ -33,10 +33,8 @@ pub enum ConfigSource {
     /// directory becomes the project root.
     File(Utf8PathBuf),
 
-    /// Use built-in defaults with this directory as the project root. No
-    /// configuration file is read, so the site is described entirely by the
-    /// directory layout.
-    Defaults(Utf8PathBuf),
+    /// Compile documents in place under this directory, without reading a config file.
+    Free(Utf8PathBuf),
 }
 
 impl ConfigSource {
@@ -44,8 +42,8 @@ impl ConfigSource {
         Self::File(path.into())
     }
 
-    pub fn defaults(root: impl Into<Utf8PathBuf>) -> Self {
-        Self::Defaults(root.into())
+    pub fn free(root: impl Into<Utf8PathBuf>) -> Self {
+        Self::Free(root.into())
     }
 }
 

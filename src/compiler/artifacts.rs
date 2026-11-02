@@ -67,7 +67,7 @@ pub(super) fn sync_optional_output(
 ) -> eyre::Result<()> {
     if let Some(payload) = payload {
         atomic_text::write_text_atomically(path, payload, output_name)?;
-    } else {
+    } else if !crate::environment::is_free() {
         let _ = remove_file_if_exists(path)?;
     }
     Ok(())

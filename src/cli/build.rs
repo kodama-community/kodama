@@ -25,14 +25,14 @@ use crate::{
 #[derive(clap::Args)]
 pub struct BuildCommand {
     /// Path to the configuration file (default: ./Kodama.toml).
-    #[arg(short, long, conflicts_with = "no_config")]
+    #[arg(short, long, conflicts_with_all = ["no_config", "free"])]
     config: Option<Utf8PathBuf>,
 
-    /// Build with built-in defaults instead of a configuration file.
-    ///
-    /// The current directory must contain a `trees` directory; without a config
-    /// file the directory layout is the only description of the site.
-    #[arg(long, default_value_t = false)]
+    /// Compile documents under the current directory to adjacent HTML files, ignoring config.
+    #[arg(long)]
+    free: bool,
+
+    #[arg(long, hide = true)]
     no_config: bool,
 
     /// Enable verbose output.
@@ -80,13 +80,16 @@ pub fn no_cache_enabled() -> &'static bool {
 /// This function invoked the [`environment::init_environment`] function to initialize the environment
 pub fn build(command: &BuildCommand) -> eyre::Result<()> {
     build_with_dirty(
-        &config_arg::resolve(command.config.as_ref(), command.no_config)?,
+        &config_arg::resolve(command.config.as_ref(), command.free, command.no_config)?,
         BuildMode::Publish,
         BuildOptions {
             verbose: command.verbose,
             verbose_skip: command.verbose_skip,
             no_cache: command.no_cache,
-            outputs: command.output.resolve(compiler::CompileOutputs::default()),
+            outputs: command.output.resolve(compiler::CompileOutputs {
+                indexes: !command.free,
+                graph: !command.free,
+            }),
         },
         None,
     )
@@ -112,7 +115,9 @@ pub fn build_with_dirty(
     let root = environment::root_dir();
     let trees_dir = environment::trees_dir();
     let workspace = all_trees_source(&trees_dir)?;
-    compiler::sync_typst_svg_assets(trees_dir.as_path())?;
+    let (_, svg_dependencies) = crate::typst::cache::capture_dependencies(|| {
+        compiler::sync_typst_svg_assets(trees_dir.as_path())
+    })?;
     let expanded_dirty = dirty_paths.map(|paths| compiler::expand_dirty_paths(&workspace, paths));
     compile_with_mode(mode, workspace, expanded_dirty.as_ref(), options.outputs).wrap_err_with(
         || {
@@ -124,6 +129,14 @@ pub fn build_with_dirty(
         },
     )?;
 
+    if matches!(mode, BuildMode::Serve) {
+        with_serve_session(|slot| {
+            if let Some(session) = slot {
+                session.svg_dependencies = svg_dependencies;
+            }
+            Ok(())
+        })?;
+    }
     sync_assets_dir()?;
     write_reload_marker(mode)?;
 
@@ -212,6 +225,13 @@ fn rewrite_serve_with_session(outputs: compiler::CompileOutputs) -> eyre::Result
     })
 }
 
+pub(super) fn serve_dependency_paths() -> eyre::Result<std::collections::HashSet<Utf8PathBuf>> {
+    with_serve_session(|slot| match slot {
+        Some(session) => session.dependency_paths(),
+        None => Ok(Default::default()),
+    })
+}
+
 fn clear_serve_session() {
     let _ = with_serve_session(|slot| {
         *slot = None;
@@ -242,6 +262,9 @@ fn export_static_files() -> eyre::Result<()> {
 /// Synchronize the assets directory [`config::assets_dir`] with the
 /// output directory [`config::output_dir()`].
 fn sync_assets_dir() -> eyre::Result<bool> {
+    if environment::is_free() {
+        return Ok(false);
+    }
     let asset_dir = environment::assets_dir();
     let asset_name = asset_dir
         .file_name()
@@ -251,7 +274,7 @@ fn sync_assets_dir() -> eyre::Result<bool> {
     assets_sync::sync_assets(asset_dir, target)
 }
 
-fn write_reload_marker(mode: BuildMode) -> eyre::Result<()> {
+pub(super) fn write_reload_marker(mode: BuildMode) -> eyre::Result<()> {
     if !matches!(mode, BuildMode::Serve) {
         return Ok(());
     }

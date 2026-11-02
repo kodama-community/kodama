@@ -80,7 +80,7 @@ fn relative_tree_path(
         })
 }
 
-fn is_temp_like_path(path: &Utf8Path) -> bool {
+pub(super) fn is_temp_like_path(path: &Utf8Path) -> bool {
     let Some(file_name) = path.file_name() else {
         return false;
     };
@@ -90,6 +90,7 @@ fn is_temp_like_path(path: &Utf8Path) -> bool {
         || (file_name.starts_with('#') && file_name.ends_with('#'))
         || file_name.ends_with('~')
         || lower.ends_with(".tmp")
+        || lower.contains(".tmp.")
         || lower.ends_with(".temp")
         || lower.ends_with(".swp")
         || lower.ends_with(".swx")

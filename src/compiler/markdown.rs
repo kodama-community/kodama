@@ -64,7 +64,7 @@ pub(super) fn parse_markdown_sections_from_source(
     let extracted = extract_subtrees_root(source, source_slug)?;
     let shared_reference_definitions = extract_shared_reference_definitions(&extracted.root_source);
 
-    let mut root = parse_markdown_source(&extracted.root_source, source_slug)
+    let mut root = parse_markdown_source(&extracted.root_source, source_slug, source_slug)
         .wrap_err_with(|| eyre!("failed to parse root markdown section `{source_slug}`"))?;
     patch_root_subtree_embeds(&mut root, &extracted.subtrees)?;
 
@@ -98,8 +98,8 @@ pub(super) fn parse_markdown_sections_from_source(
         }
         let subtree_source =
             compose_subtree_source(&extracted_nested.root_source, &shared_reference_definitions);
-        let mut section =
-            parse_markdown_source(&subtree_source, subtree.slug).wrap_err_with(|| {
+        let mut section = parse_markdown_source(&subtree_source, subtree.slug, subtree.source_slug)
+            .wrap_err_with(|| {
                 eyre!(
                     "failed to parse subtree section `{}` (from `{}`)",
                     subtree.slug,
@@ -125,7 +125,11 @@ pub(super) fn parse_markdown_sections_from_source(
     Ok(sections)
 }
 
-pub(super) fn parse_markdown_source(source: &str, slug: Slug) -> eyre::Result<UnresolvedSection> {
+pub(super) fn parse_markdown_source(
+    source: &str,
+    slug: Slug,
+    source_slug: Slug,
+) -> eyre::Result<UnresolvedSection> {
     let mut metadata = HTMLMetaData::with_slug_ext(slug, environment::markdown_suffix());
 
     let events = pulldown_cmark::Parser::new_ext(source, OPTIONS);
@@ -147,12 +151,27 @@ pub(super) fn parse_markdown_source(source: &str, slug: Slug) -> eyre::Result<Un
         }
     });
     let content = {
+        let events = crate::html::free_urls::images(events, source_slug);
         let events = Footnote::process(events, slug);
         let events = Figure::process(events);
-        let events = TypstImage::process(events, slug);
+        let events = TypstImage::process(
+            events,
+            if environment::is_free() {
+                source_slug
+            } else {
+                slug
+            },
+        );
         let events =
             TextElaborator::process(events).with_enabled(environment::elaborate_cjk_text());
-        let events = Embed::process(events, slug);
+        let events = Embed::process(
+            events,
+            if environment::is_free() {
+                source_slug
+            } else {
+                slug
+            },
+        );
         normalize_html_content(to_contents(events))
     };
     if let Some(err) = metadata_error {
@@ -166,6 +185,7 @@ pub fn parse_spanned_markdown(markdown_input: &str, slug: Slug) -> HTMLContent {
     let events = pulldown_cmark::Parser::new_ext(markdown_input, OPTIONS);
     let events = filter_raw_html(events, environment::allow_unsafe_html());
     let events = ignore_paragraph(events);
+    let events = crate::html::free_urls::images(events, slug);
     let events = Footnote::process(events, slug);
     let events = TypstImage::process(events, slug);
     let events = TextElaborator::process(events).with_enabled(environment::elaborate_cjk_text());

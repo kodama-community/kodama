@@ -127,9 +127,12 @@ pub fn test_typst_figure_content_is_base_url_independent() {
         crate::environment::BuildMode::Publish,
         config,
         || {
-            let section =
-                parse_markdown_source("[](/guide/fig.typ#:block)", Slug::new("guide/index"))
-                    .unwrap();
+            let section = parse_markdown_source(
+                "[](/guide/fig.typ#:block)",
+                Slug::new("guide/index"),
+                Slug::new("guide/index"),
+            )
+            .unwrap();
             let HTMLContent::Lazy(contents) = section.content else {
                 panic!("expected lazy content, got {:?}", section.content);
             };

@@ -66,7 +66,7 @@ Compiles the current site into the publish output directory.
 Options:
 
 - `--config <path>`, short `-c`: configuration file.
-- `--no-config`: ignore any configuration file and use the built-in defaults; requires a `trees` directory in the current directory.
+- `--free`: compile documents in place under the current directory without reading configuration (see [Free mode](#free-mode)).
 - `--verbose`, short `-v`: print build output.
 - `--verbose-skip`: print skip output.
 - `--no-cache`, alias `--nc`: rebuild all files without using caches.
@@ -88,7 +88,7 @@ Validates the site without generating build artifacts.
 Options:
 
 - `--config <path>`, short `-c`: configuration file.
-- `--no-config`: ignore any configuration file and use the built-in defaults; requires a `trees` directory in the current directory.
+- `--free`: check documents under the current directory without reading configuration.
 - `--strict`: treat warnings as errors.
 
 Alias: `kodama c`.
@@ -106,7 +106,7 @@ The built-in server listens on `127.0.0.1`; set `[serve].port` to pin its port, 
 Options:
 
 - `--config <path>`, short `-c`: configuration file.
-- `--no-config`: ignore any configuration file and use the built-in defaults; requires a `trees` directory in the current directory.
+- `--free`: compile and serve documents in place under the current directory without reading configuration.
 - `--verbose`, short `-v`: print build output.
 - `--verbose-skip`: print skip output.
 - `--disable-reload`, short `-d`: disable live reload.
@@ -121,6 +121,21 @@ Options:
 Alias: `kodama s`.
 
 `--print-json` requires `--no-server`; running `--print-json` without `--no-server` is rejected.
+
+## Free mode
+
+`build --free`, `serve --free`, and `check --free` use the current directory as the source root. `--free` conflicts with `--config` and ignores any existing `Kodama.toml`. The old `--no-config` flag is retired: it reports an error rather than silently switching to in-place output.
+
+- Recursively discover Markdown and Typst section sources, including `README.md`. Hidden and underscore-prefixed directories remain excluded from source discovery.
+- Write `.html` beside each source, overwriting an existing file of the same name. `.typ` files compile to adjacent `.svg` files using the existing cache. No `publish` directory is created.
+- Keep caches in `.cache`. Source discovery and watching ignore this directory, and the built-in HTTP server denies access to hidden paths and symlinks escaping the workspace.
+- Use ordinary resources in place; no assets directory is required and no assets are copied. Chapter links target relative HTML URLs. Resources in embedded Markdown retain their source-relative meaning.
+- Inline the built-in CSS/JS. Do not load workspace `import-*.html` files or the fixed `assets/favicon.ico`. Built-in font and math imports remain available.
+- Do not generate RSS. `kodama.json` and `kodama.graph.json` are off by default, but `--indexes` and `--graph` enable them at the workspace root. Disabled outputs are left untouched.
+- Do not remove HTML or SVG files when their sources are deleted.
+- In `serve`, source and recorded dependency changes trigger compilation. Ordinary resource changes only trigger browser reload. Generated files, temporary files, caches, and ordinary HTML events are ignored. The existing `kodama.reload` file is used for live reload.
+
+This is a local document workflow, not a standalone publish directory: moving only the generated HTML does not move its resources. Visit the desired document URL, such as `/README.html`, when there is no `index.html`.
 
 ## `kodama snip`
 

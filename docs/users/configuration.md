@@ -2,7 +2,7 @@
 
 Kodama reads `Kodama.toml` by default. Commands that accept `--config` can point at another file.
 
-An empty configuration is valid because every section has defaults. `kodama build`, `kodama check` and `kodama serve` also accept `--no-config`, which reads no configuration file and uses the built-in defaults, taking the current directory as the project root. It requires a `trees` directory in the current directory and fails otherwise, so a mistyped directory cannot emit output.
+An empty configuration is valid because every section has defaults. `kodama build`, `kodama check` and `kodama serve` also accept `--free`, which ignores configuration and uses the current directory as the source root. Free mode writes HTML and Typst SVG files beside their sources, without requiring `trees` or copying assets. See [Free mode](commands.md#free-mode) for its output and watch rules. `--free` conflicts with `--config`. The former `--no-config` behavior is retired and is not an alias for `--free`.
 
 ## `[kodama]`
 

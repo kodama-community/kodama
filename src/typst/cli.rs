@@ -327,7 +327,10 @@ pub fn write_svg<P: AsRef<Utf8Path>>(typst_path: P, svg_path: P) -> eyre::Result
     let trees_dir = environment::trees_dir();
     let full_path = trees_dir.join(typst_path);
 
-    if typst_cache::cached_artifact_dependencies(typst_path, svg_path, "svg")?.is_some() {
+    if let Some(dependencies) =
+        typst_cache::cached_artifact_dependencies(typst_path, svg_path, "svg")?
+    {
+        typst_cache::record_dependencies(dependencies);
         if *crate::cli::build::verbose_skip() {
             println!("Skip: {}", path_utils::pretty_path(typst_path));
         }
@@ -345,7 +348,9 @@ pub fn write_svg<P: AsRef<Utf8Path>>(typst_path: P, svg_path: P) -> eyre::Result
     let output = command.output()?;
 
     if output.status.success() {
-        typst_cache::save_artifact(typst_path, svg_path, "svg", &dependencies.read()?)?;
+        let dependencies = dependencies.read()?;
+        typst_cache::save_artifact(typst_path, svg_path, "svg", &dependencies)?;
+        typst_cache::record_dependencies(dependencies);
         if *crate::cli::build::verbose() {
             println!(
                 "Compiled to SVG: {}",

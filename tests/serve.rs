@@ -12,15 +12,15 @@ use std::{
 use common::Site;
 
 #[test]
-fn no_config_serve_reports_null_config_and_watches_no_config_file() {
+fn free_serve_reports_null_config_and_watches_no_config_file() {
     let site = Site::new();
     fs::remove_file(site.0.join("Kodama.toml")).unwrap();
-    site.write("trees/index.md", "# Root\n\nContent\n");
+    site.write("index.md", "# Root\n\nContent\n");
 
     let mut child = site
         .command(&[
             "serve",
-            "--no-config",
+            "--free",
             "--no-server",
             "--disable-reload",
             "--print-json",

@@ -99,12 +99,17 @@ impl Writer {
             &catalog_html,
         );
 
+        let html = if environment::is_free() {
+            crate::html::free_urls::render(&html, slug)
+        } else {
+            html
+        };
         Ok((html, page_title.to_string()))
     }
 
     fn header(state: &CompileState, slug: Slug) -> String {
         // We must avoid section `index` defaulting to itself as its parent section.
-        if slug.as_str() == "index" {
+        if slug.as_str() == "index" || environment::is_free() {
             return String::default();
         }
 

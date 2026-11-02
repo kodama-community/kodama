@@ -239,6 +239,14 @@ fn parse_typst_sections_from_html(
     source_slug: Slug,
     html_str: &str,
 ) -> eyre::Result<Vec<(Slug, UnresolvedSection)>> {
+    let html_str = if environment::is_free() {
+        Cow::Owned(crate::html::free_urls::resources_in_html(
+            html_str,
+            source_slug,
+        ))
+    } else {
+        Cow::Borrowed(html_str)
+    };
     let mut metadata = HTMLMetaData::with_slug_ext(source_slug, environment::typst_suffix());
     metadata.builtin.source_slug = Some(source_slug.to_string());
 
@@ -246,7 +254,7 @@ fn parse_typst_sections_from_html(
     let mut anonymous_slugs = AnonymousSlugState::default();
     let mut subtree_sections = Vec::new();
     let content = parse_typst_html(
-        html_str,
+        &html_str,
         source_slug,
         source_slug,
         &mut metadata,

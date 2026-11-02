@@ -134,25 +134,25 @@ fn stderr_of(output: &std::process::Output) -> String {
 }
 
 #[test]
-fn no_config_builds_from_the_directory_layout() {
+fn free_builds_in_place() {
     let site = Site::new();
     fs::remove_file(site.0.join("Kodama.toml")).unwrap();
-    site.write("trees/index.md", "# Root\n\nContent\n");
+    site.write("README.md", "# Root\n\nContent\n");
 
-    let output = site.run(&["build", "--no-config"]);
+    let output = site.run(&["build", "--free"]);
     assert!(output.status.success(), "{}", stderr_of(&output));
-    assert!(site.0.join("publish/index.html").exists());
+    assert!(site.0.join("README.html").exists());
 }
 
 #[test]
-fn no_config_ignores_an_existing_config_file() {
+fn free_ignores_an_existing_config_file() {
     let site = Site::new();
     site.write("Kodama.toml", "[build]\noutput = \"./custom\"\n");
-    site.write("trees/index.md", "# Root\n\nContent\n");
+    site.write("index.md", "# Root\n\nContent\n");
 
-    let output = site.run(&["build", "--no-config"]);
+    let output = site.run(&["build", "--free"]);
     assert!(output.status.success(), "{}", stderr_of(&output));
-    assert!(site.0.join("publish/index.html").exists());
+    assert!(site.0.join("index.html").exists());
     assert!(!site.0.join("custom").exists());
     assert!(
         stderr_of(&output).contains("Ignoring"),
@@ -162,7 +162,7 @@ fn no_config_ignores_an_existing_config_file() {
 }
 
 #[test]
-fn no_config_without_a_trees_directory_is_rejected() {
+fn retired_no_config_is_rejected() {
     let site = Site::new();
     fs::remove_file(site.0.join("Kodama.toml")).unwrap();
     fs::remove_dir_all(site.0.join("trees")).unwrap();
@@ -170,14 +170,14 @@ fn no_config_without_a_trees_directory_is_rejected() {
     let output = site.run(&["build", "--no-config"]);
     assert!(!output.status.success());
     let stderr = stderr_of(&output);
-    assert!(stderr.contains("does not exist"), "{stderr}");
+    assert!(stderr.contains("retired"), "{stderr}");
     assert!(!site.0.join("publish").exists());
 }
 
 #[test]
-fn config_and_no_config_conflict() {
+fn config_and_free_conflict() {
     let site = Site::new();
 
-    let output = site.run(&["build", "--config", "Kodama.toml", "--no-config"]);
+    let output = site.run(&["build", "--config", "Kodama.toml", "--free"]);
     assert_eq!(output.status.code(), Some(2), "{}", stderr_of(&output));
 }

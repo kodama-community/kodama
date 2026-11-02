@@ -651,7 +651,12 @@ mod tests {
         let shared = extract_shared_reference_definitions(&extracted.root_source);
         let subtree_source = compose_subtree_source(&extracted.subtrees[0].body, &shared);
 
-        let child = parse_markdown_source(&subtree_source, extracted.subtrees[0].slug).unwrap();
+        let child = parse_markdown_source(
+            &subtree_source,
+            extracted.subtrees[0].slug,
+            extracted.subtrees[0].source_slug,
+        )
+        .unwrap();
         let html = child.content.as_str().unwrap_or_default();
         assert!(html.contains(r#"href="https://example.com/shared""#));
     }
@@ -674,7 +679,12 @@ mod tests {
         let shared = extract_shared_reference_definitions(&extracted.root_source);
         let subtree_source = compose_subtree_source(&extracted.subtrees[0].body, &shared);
 
-        let child = parse_markdown_source(&subtree_source, extracted.subtrees[0].slug).unwrap();
+        let child = parse_markdown_source(
+            &subtree_source,
+            extracted.subtrees[0].slug,
+            extracted.subtrees[0].source_slug,
+        )
+        .unwrap();
         let html = child.content.as_str().unwrap_or_default();
         assert!(html.contains(r#"href="https://example.com/inner""#));
         assert!(!html.contains(r#"href="https://example.com/outer""#));
@@ -699,7 +709,12 @@ mod tests {
         let extracted = extract_subtrees_root(source, Slug::new("book/index")).unwrap();
         let shared = extract_shared_reference_definitions(&extracted.root_source);
         let subtree_source = compose_subtree_source(&extracted.subtrees[0].body, &shared);
-        let child = parse_markdown_source(&subtree_source, extracted.subtrees[0].slug).unwrap();
+        let child = parse_markdown_source(
+            &subtree_source,
+            extracted.subtrees[0].slug,
+            extracted.subtrees[0].source_slug,
+        )
+        .unwrap();
         let html = child.content.as_str().unwrap_or_default();
 
         for path in ["upper", "lower", "street", "caps"] {
@@ -817,10 +832,19 @@ anonymous body
 </remark>
 "#;
         let extracted = extract_subtrees_root(source, Slug::new("index")).unwrap();
-        let mut root = parse_markdown_source(&extracted.root_source, Slug::new("index")).unwrap();
+        let mut root = parse_markdown_source(
+            &extracted.root_source,
+            Slug::new("index"),
+            Slug::new("index"),
+        )
+        .unwrap();
         patch_root_subtree_embeds(&mut root, &extracted.subtrees).unwrap();
-        let mut anonymous =
-            parse_markdown_source(&extracted.subtrees[0].body, extracted.subtrees[0].slug).unwrap();
+        let mut anonymous = parse_markdown_source(
+            &extracted.subtrees[0].body,
+            extracted.subtrees[0].slug,
+            extracted.subtrees[0].source_slug,
+        )
+        .unwrap();
         apply_subtree_defaults(&mut anonymous, &extracted.subtrees[0]);
 
         assert_eq!(extracted.subtrees.len(), 1);
@@ -854,8 +878,12 @@ child body
 </remark>
 "#;
         let extracted = extract_subtrees_root(source, Slug::new("book/index")).unwrap();
-        let mut root =
-            parse_markdown_source(&extracted.root_source, Slug::new("book/index")).unwrap();
+        let mut root = parse_markdown_source(
+            &extracted.root_source,
+            Slug::new("book/index"),
+            Slug::new("book/index"),
+        )
+        .unwrap();
         patch_root_subtree_embeds(&mut root, &extracted.subtrees).unwrap();
 
         let HTMLContent::Lazy(contents) = &root.content else {
@@ -870,8 +898,12 @@ child body
             .collect();
         assert_eq!(embeds, vec!["/book/child".to_string()]);
 
-        let mut child =
-            parse_markdown_source(&extracted.subtrees[0].body, extracted.subtrees[0].slug).unwrap();
+        let mut child = parse_markdown_source(
+            &extracted.subtrees[0].body,
+            extracted.subtrees[0].slug,
+            extracted.subtrees[0].source_slug,
+        )
+        .unwrap();
         apply_subtree_defaults(&mut child, &extracted.subtrees[0]);
         assert_eq!(child.metadata.slug(), Some(Slug::new("book/child")));
         assert_eq!(

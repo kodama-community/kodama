@@ -213,7 +213,20 @@ fn indexes_from_shallows(shallows: &UnresolvedSections) -> HashMap<Slug, HTMLMet
     shallows
         .iter()
         .filter(|(_, section)| !section.metadata.internal_anon_subtree())
-        .map(|(slug, section)| (*slug, section.metadata.clone()))
+        .map(|(slug, section)| {
+            let mut metadata = section.metadata.clone();
+            if environment::is_free() {
+                for content in metadata
+                    .title
+                    .iter_mut()
+                    .chain(metadata.taxon.iter_mut())
+                    .chain(metadata.custom.values_mut())
+                {
+                    crate::html::free_urls::render_content(content, *slug);
+                }
+            }
+            (*slug, metadata)
+        })
         .collect()
 }
 

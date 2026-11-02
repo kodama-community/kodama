@@ -12,6 +12,9 @@ use super::{ENTRY_DIR_NAME, HASH_DIR_NAME};
 
 /// URL keep posix style, so the type of return value is [`String`].
 pub fn full_url<P: AsRef<Utf8Path>>(path: P) -> String {
+    if super::is_free() {
+        return crate::html::free_urls::resource(path.as_ref().as_str(), Slug::new("index"));
+    }
     let base_url = super::base_url();
     let path = path_utils::pretty_path(path.as_ref());
     if let Some(stripped) = path.strip_prefix("/") {
@@ -24,6 +27,9 @@ pub fn full_url<P: AsRef<Utf8Path>>(path: P) -> String {
 }
 
 pub fn full_html_url(slug: Slug) -> String {
+    if super::is_free() {
+        return crate::html::free_urls::page(slug);
+    }
     let pretty_urls = super::pretty_urls();
     let page_suffix = super::to_page_suffix(pretty_urls);
     full_url(format!("{}{}", slug, page_suffix))

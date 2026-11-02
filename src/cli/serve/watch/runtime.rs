@@ -160,6 +160,25 @@ fn collect_event_paths(
             .iter()
             .filter_map(|path| Utf8PathBuf::from_path_buf(path.clone()).ok())
             .filter(|path| {
+                if crate::environment::is_free() {
+                    let root = crate::environment::root_dir();
+                    let Ok(relative) = path.strip_prefix(&root) else {
+                        return false;
+                    };
+                    if super::analysis::is_temp_like_path(path)
+                        || path.is_dir()
+                        || relative
+                            .components()
+                            .any(|part| part.as_str().starts_with('.'))
+                        || matches!(
+                            relative.as_str(),
+                            "kodama.reload" | "kodama.json" | "kodama.graph.json"
+                        )
+                        || (path.extension() == Some("svg") && path.with_extension("typ").is_file())
+                    {
+                        return false;
+                    }
+                }
                 !path
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("html"))

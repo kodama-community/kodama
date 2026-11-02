@@ -4,6 +4,7 @@
 
 mod core;
 mod document;
+pub(crate) mod free_urls;
 mod header;
 mod macros;
 

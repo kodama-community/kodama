@@ -19,7 +19,7 @@ pub struct Workspace {
 }
 
 pub fn should_ignore_file(path: &Utf8Path) -> bool {
-    path.file_name().is_some_and(|name| name == "README.md")
+    !environment::is_free() && path.file_name().is_some_and(|name| name == "README.md")
 }
 
 pub fn should_ignore_dir(path: &Utf8Path) -> bool {
@@ -55,6 +55,9 @@ pub fn all_trees_source(trees_dir: &Utf8Path) -> eyre::Result<Workspace> {
             let path = entry
                 .wrap_err_with(|| failed_to_read_dir(source_dir))?
                 .into_path();
+            if environment::is_free() && path.is_symlink() {
+                continue;
+            }
 
             if path.is_file() && !should_ignore_file(&path) {
                 let Some((slug, kind)) = to_slug_kind(source_dir, &path) else {
@@ -66,7 +69,7 @@ pub fn all_trees_source(trees_dir: &Utf8Path) -> eyre::Result<Workspace> {
                 };
             } else if path.is_dir() && !should_ignore_dir(&path) {
                 for entry in WalkDir::new(&path)
-                    .follow_links(true)
+                    .follow_links(!environment::is_free())
                     .into_iter()
                     .filter_entry(|e| {
                         Utf8Path::from_path(e.path())
@@ -86,6 +89,9 @@ pub fn all_trees_source(trees_dir: &Utf8Path) -> eyre::Result<Workspace> {
                             continue;
                         }
                     };
+                    if environment::is_free() && path.is_symlink() {
+                        continue;
+                    }
                     if path.is_file() {
                         let Some((slug, kind)) = to_slug_kind(source_dir, &path) else {
                             continue;
@@ -121,7 +127,7 @@ pub fn sync_typst_svg_assets(trees_dir: &Utf8Path) -> eyre::Result<()> {
     // Check every SVG's recorded dependencies, including imports and data files.
     // Unchanged artifacts are skipped by the renderer cache.
     for entry in WalkDir::new(trees_dir)
-        .follow_links(true)
+        .follow_links(!environment::is_free())
         .into_iter()
         .filter_entry(|e| {
             Utf8Path::from_path(e.path()).is_some_and(|p| p.is_file() || !should_ignore_dir(p))
@@ -147,7 +153,8 @@ pub fn sync_typst_svg_assets(trees_dir: &Utf8Path) -> eyre::Result<()> {
                 continue;
             }
         };
-        if !path.is_file()
+        if (environment::is_free() && path.is_symlink())
+            || !path.is_file()
             || !path
                 .extension()
                 .is_some_and(|e| matches!(environment::classify_source(e), SourceRole::TypstLib))

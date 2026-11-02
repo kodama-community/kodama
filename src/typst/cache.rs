@@ -3,7 +3,7 @@
 
 use std::{
     cell::RefCell,
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     fs::{self, OpenOptions},
     process::Command,
 };
@@ -29,13 +29,15 @@ struct DependencySnapshot {
 
 impl DependencySnapshot {
     fn is_current(&self) -> eyre::Result<bool> {
-        let Some(version) = &self.version else {
-            return Ok(self.files.is_empty());
-        };
-        Ok(version == &typst_version()?
-            && self.files.iter().all(|(path, meta)| {
-                environment::source_meta_of(Utf8Path::new(path)) == Some(*meta)
-            }))
+        if let Some(version) = &self.version {
+            if version != &typst_version()? {
+                return Ok(false);
+            }
+        }
+        Ok(self
+            .files
+            .iter()
+            .all(|(path, meta)| environment::source_meta_of(Utf8Path::new(path)) == Some(*meta)))
     }
 
     fn merge(&mut self, other: &Self) {
@@ -48,6 +50,20 @@ impl DependencySnapshot {
 }
 
 impl Dependencies {
+    pub fn paths(&self) -> eyre::Result<HashSet<Utf8PathBuf>> {
+        let mut paths: HashSet<_> = self.direct.files.keys().map(Utf8PathBuf::from).collect();
+        if self.inline.is_some() {
+            INLINE_CACHE.with(|cache| -> eyre::Result<()> {
+                let mut cache = cache.borrow_mut();
+                if let Some(record) = &inline_cache_state(&mut cache)?.record {
+                    paths.extend(record.dependencies.files.keys().map(Utf8PathBuf::from));
+                }
+                Ok(())
+            })?;
+        }
+        Ok(paths)
+    }
+
     pub fn is_current(&self) -> eyre::Result<bool> {
         if !self.direct.is_current()? {
             return Ok(false);
@@ -109,6 +125,19 @@ pub fn begin_build() {
 
 pub fn begin_phase() {
     DEPENDENCIES.with(|dependencies| *dependencies.borrow_mut() = Dependencies::default());
+}
+
+pub fn record_file(path: &Utf8Path) {
+    let path = path.canonicalize_utf8().unwrap_or_else(|_| path.to_owned());
+    if let Some(meta) = environment::source_meta_of(&path) {
+        DEPENDENCIES.with(|current| {
+            current
+                .borrow_mut()
+                .direct
+                .files
+                .insert(path.into_string(), meta);
+        });
+    }
 }
 
 pub fn record_dependencies(dependencies: Dependencies) {

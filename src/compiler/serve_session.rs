@@ -28,10 +28,25 @@ pub struct ServeCompileSession {
     shallows: HashMap<Slug, UnresolvedSection>,
     source_sections: HashMap<Slug, Vec<Slug>>,
     source_dependencies: SourceDependencies,
+    pub svg_dependencies: typst_cache::Dependencies,
     compiled: Option<CompileCache>,
 }
 
 impl ServeCompileSession {
+    pub fn dependency_paths(&self) -> eyre::Result<HashSet<camino::Utf8PathBuf>> {
+        let mut paths = self.svg_dependencies.paths()?;
+        for (slug, dependencies) in &self.source_dependencies {
+            paths.extend(dependencies.paths()?);
+            if let Some(section) = self.shallows.get(slug) {
+                paths.insert(environment::input_path(format!(
+                    "{slug}.{}",
+                    section.ext()?
+                )));
+            }
+        }
+        Ok(paths)
+    }
+
     pub fn is_initialized(&self) -> bool {
         self.initialized
     }

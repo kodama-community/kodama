@@ -117,6 +117,25 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                     } else if is_external_link(&url) {
                         self.state = State::ExternalLink;
                         self.url = Some(url);
+                    } else if crate::environment::is_free() {
+                        let (path, suffix) = crate::html::free_urls::split_suffix(&url);
+                        let extension = camino::Utf8Path::new(path).extension();
+                        let is_section = !path.is_empty()
+                            && !path.ends_with('/')
+                            && (extension.is_none()
+                                || extension
+                                    .and_then(crate::environment::kind_from_extension)
+                                    .is_some());
+                        if is_section {
+                            self.state = State::LocalLink;
+                            let resolved = resolve_section_url(path, self.current_slug);
+                            let slug = crate::slug::to_slug(&resolved);
+                            self.url = Some(format!("/{slug}{suffix}"));
+                        } else {
+                            self.state = State::AssetFile;
+                            self.url =
+                                Some(crate::html::free_urls::resource(&url, self.current_slug));
+                        }
                     } else if is_local_link_with_assets(dest_url, &self.assets_dir_name) {
                         self.state = State::LocalLink;
                         self.url = Some(resolve_local_link_url_with_trees_root(
@@ -172,6 +191,9 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                             };
 
                             let include_path = root_dir().join(&url);
+                            if crate::environment::is_free() {
+                                crate::typst::cache::record_file(&include_path);
+                            }
                             let content = fs::read_to_string(&include_path).unwrap_or_else(|err| {
                                 record_include_error();
                                 color_print::ceprintln!(

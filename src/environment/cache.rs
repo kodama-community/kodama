@@ -8,14 +8,15 @@ use camino::{Utf8Path, Utf8PathBuf};
 use eyre::{eyre, WrapErr};
 
 const CACHE_VERSION_FILE: &str = "version";
-// Emphasis rules changed; cached Markdown must be reparsed.
-const CACHE_SCHEMA_VERSION: &str = "schema-v13";
+// Free-mode entries retain source-relative URLs until page rendering.
+const CACHE_SCHEMA_VERSION: &str = "schema-v14";
 
 fn cache_version_value() -> String {
     format!(
-        "kodama:{}:{}",
+        "kodama:{}:{}:{}",
         env!("CARGO_PKG_VERSION"),
-        CACHE_SCHEMA_VERSION
+        CACHE_SCHEMA_VERSION,
+        if super::is_free() { "free" } else { "site" }
     )
 }
 

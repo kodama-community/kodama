@@ -7,21 +7,24 @@ use eyre::eyre;
 
 use crate::config::{self, ConfigSource};
 
-/// Resolve the `--config <path>` / `--no-config` pair into a [`ConfigSource`].
-///
-/// `--config` and `--no-config` are mutually exclusive at the CLI level, so
-/// this only decides between an explicit path, built-in defaults rooted at the
-/// current directory, and the default `./Kodama.toml`.
-pub fn resolve(config: Option<&Utf8PathBuf>, no_config: bool) -> eyre::Result<ConfigSource> {
+/// Choose a configured site or an in-place Free workspace.
+pub fn resolve(
+    config: Option<&Utf8PathBuf>,
+    free: bool,
+    no_config: bool,
+) -> eyre::Result<ConfigSource> {
     if no_config {
+        return Err(eyre!("`--no-config` is retired. Use a configuration file, or explicitly choose `--free` to write HTML beside the source files."));
+    }
+    if free {
         let root = current_dir()?;
         if root.join(config::DEFAULT_CONFIG_PATH).is_file() {
             color_print::ceprintln!(
-                "<dim>[config] Ignoring `{}` because `--no-config` was given.</>",
+                "<dim>[config] Ignoring `{}` because `--free` was given.</>",
                 config::DEFAULT_CONFIG_PATH
             );
         }
-        return Ok(ConfigSource::defaults(root));
+        return Ok(ConfigSource::free(root));
     }
 
     Ok(ConfigSource::file(
@@ -43,7 +46,7 @@ mod tests {
 
     #[test]
     fn test_resolve_defaults_to_the_default_config_path() {
-        let source = resolve(None, false).unwrap();
+        let source = resolve(None, false, false).unwrap();
         match source {
             ConfigSource::File(path) => assert_eq!(path, config::DEFAULT_CONFIG_PATH),
             other => panic!("unexpected source: {other:?}"),
@@ -53,7 +56,7 @@ mod tests {
     #[test]
     fn test_resolve_keeps_the_given_config_path() {
         let path = Utf8PathBuf::from("custom/site.toml");
-        let source = resolve(Some(&path), false).unwrap();
+        let source = resolve(Some(&path), false, false).unwrap();
         match source {
             ConfigSource::File(resolved) => assert_eq!(resolved, path),
             other => panic!("unexpected source: {other:?}"),
@@ -61,10 +64,10 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_no_config_uses_the_current_directory() {
-        let source = resolve(None, true).unwrap();
+    fn test_resolve_free_uses_the_current_directory() {
+        let source = resolve(None, true, false).unwrap();
         match source {
-            ConfigSource::Defaults(root) => assert_eq!(root, current_dir().unwrap()),
+            ConfigSource::Free(root) => assert_eq!(root, current_dir().unwrap()),
             other => panic!("unexpected source: {other:?}"),
         }
     }

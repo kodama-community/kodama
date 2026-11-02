@@ -39,14 +39,14 @@ pub use source_meta::{relative_source_meta, source_meta_of, SourceMeta};
 pub struct Environment {
     /// Specifies the project root path.
     ///
-    /// Please note that this value should always be automatically derived from
-    /// the location of the toml configuration file.
+    /// Derived from the config file location, or the working directory in Free mode.
     pub root: Utf8PathBuf,
     /// The configuration file in use, when the project was configured from a
     /// file rather than from built-in defaults.
     pub config_file: Option<Utf8PathBuf>,
     pub config: Config,
     pub build_mode: BuildMode,
+    pub free: bool,
 }
 
 static ENVIRONMENT: OnceLock<RwLock<Environment>> = OnceLock::new();
@@ -57,6 +57,7 @@ fn default_environment() -> Environment {
         config_file: None,
         config: Config::default(),
         build_mode: BuildMode::Publish,
+        free: false,
     }
 }
 
@@ -111,6 +112,7 @@ fn update_environment(environment: Environment) {
 /// environment read lock and re-deriving per call.
 #[derive(Debug)]
 struct DerivedCache {
+    free: bool,
     root_dir: Utf8PathBuf,
     trees_dir: Utf8PathBuf,
     trees_dir_without_root: String,
@@ -134,6 +136,7 @@ fn compute_derived(env: &Environment) -> DerivedCache {
         BuildMode::Serve => crate::config::kodama::DEFAULT_BASE_URL.to_string(),
     };
     DerivedCache {
+        free: env.free,
         root_dir: root.clone(),
         trees_dir: root.join(&env.config.kodama.trees),
         trees_dir_without_root: env.config.kodama.trees.clone(),
@@ -207,6 +210,7 @@ pub(super) fn with_test_environment_config<R>(
         config_file: Some(root.join(crate::config::DEFAULT_CONFIG_PATH)),
         config,
         build_mode,
+        free: false,
     });
     f()
 }
@@ -229,27 +233,25 @@ pub fn init_environment(source: &config::ConfigSource, build_mode: BuildMode) ->
                 config_file: Some(config_path),
                 config: config::parse_config(&toml)?,
                 build_mode,
+                free: false,
             });
         }
-        config::ConfigSource::Defaults(root) => {
-            let config = Config::default();
-            // Without a config file the directory layout is the only description
-            // of the site, so refuse to write output next to directories that do
-            // not look like a site at all.
-            let trees_dir = root.join(&config.kodama.trees);
-            if !trees_dir.is_dir() {
-                return Err(eyre!(
-                    "cannot use built-in defaults: `{}` does not exist\n\
-                     Run from a site directory, or pass a configuration file with `--config <path>`.",
-                    trees_dir
-                ));
-            }
-
+        config::ConfigSource::Free(root) => {
+            let mut config = Config::default();
+            config.kodama.trees.clear();
+            config.kodama.assets.clear();
+            config.build.typst_root = root.to_string();
+            config.build.output.clear();
+            config.serve.output.clear();
+            config.build.inline_css = true;
+            config.build.inline_script = true;
+            config.publish.rss = false;
             update_environment(Environment {
                 root: root.to_owned(),
                 config_file: None,
                 config,
                 build_mode,
+                free: true,
             });
         }
     }
@@ -280,6 +282,10 @@ pub const ENTRY_DIR_NAME: &str = "entry";
 
 pub fn to_page_suffix(pretty_urls: bool) -> String {
     if pretty_urls { "" } else { ".html" }.into()
+}
+
+pub fn is_free() -> bool {
+    derived_snapshot().free
 }
 
 pub fn root_dir() -> Utf8PathBuf {
@@ -334,36 +340,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_defaults_source_needs_no_config_file() {
+    fn test_free_source_needs_no_config_file() {
         let root = crate::test_io::case_dir("env-defaults-source");
         fs::create_dir_all(root.join("trees").as_std_path()).unwrap();
 
         with_test_environment(root.clone(), BuildMode::Publish, || {
             init_environment(
-                &crate::config::ConfigSource::defaults(root.clone()),
+                &crate::config::ConfigSource::free(root.clone()),
                 BuildMode::Serve,
             )
             .unwrap();
 
             assert_eq!(config_file(), None);
             assert_eq!(root_dir(), root);
-            assert_eq!(output_dir(), root.join("./.cache/publish"));
+            assert_eq!(output_dir(), root);
         });
-
-        let _ = fs::remove_dir_all(root.as_std_path());
-    }
-
-    #[test]
-    fn test_defaults_source_requires_a_trees_directory() {
-        let root = crate::test_io::case_dir("env-defaults-no-trees");
-        fs::create_dir_all(root.as_std_path()).unwrap();
-
-        let err = init_environment(
-            &crate::config::ConfigSource::defaults(root.clone()),
-            BuildMode::Publish,
-        )
-        .expect_err("defaults without a trees directory must be rejected");
-        assert!(format!("{err}").contains("trees"), "{err}");
 
         let _ = fs::remove_dir_all(root.as_std_path());
     }
@@ -397,6 +388,7 @@ mod tests {
                 config_file: Some(Utf8PathBuf::from("Kodama.toml")),
                 config: Config::default(),
                 build_mode: BuildMode::Serve,
+                free: false,
             },
         );
 

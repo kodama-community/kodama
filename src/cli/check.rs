@@ -23,13 +23,14 @@ use crate::{
 #[derive(clap::Args)]
 pub struct CheckCommand {
     /// Path to the configuration file (default: ./Kodama.toml).
-    #[arg(short, long, conflicts_with = "no_config")]
+    #[arg(short, long, conflicts_with_all = ["no_config", "free"])]
     config: Option<Utf8PathBuf>,
 
-    /// Check with built-in defaults instead of a configuration file.
-    ///
-    /// The current directory must contain a `trees` directory.
-    #[arg(long, default_value_t = false)]
+    /// Check documents under the current directory without reading config.
+    #[arg(long)]
+    free: bool,
+
+    #[arg(long, hide = true)]
     no_config: bool,
 
     /// Treat warnings as errors.
@@ -74,7 +75,7 @@ impl Diagnostic {
 
 pub fn check(command: &CheckCommand) -> eyre::Result<()> {
     environment::init_environment(
-        &config_arg::resolve(command.config.as_ref(), command.no_config)?,
+        &config_arg::resolve(command.config.as_ref(), command.free, command.no_config)?,
         BuildMode::Check,
     )?;
     crate::typst::cache::begin_build();
@@ -90,7 +91,7 @@ pub fn check(command: &CheckCommand) -> eyre::Result<()> {
             trees_dir
         )));
     }
-    if !workspace.slug_exts.contains_key(&Slug::new("index")) {
+    if !environment::is_free() && !workspace.slug_exts.contains_key(&Slug::new("index")) {
         diagnostics.push(Diagnostic::warning(format!(
             "Missing `index` section. Add `index.{}` or `index.{}`.",
             environment::markdown_suffix(),
