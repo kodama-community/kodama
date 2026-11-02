@@ -2,11 +2,9 @@
 // Released under the GPL-3.0 license as described in the file LICENSE.
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
-use std::{
-    cell::RefCell,
-    collections::HashSet,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::{cell::RefCell, collections::HashSet};
+
+use super::Diagnostic;
 
 use crate::{
     compiler::section::{
@@ -35,6 +33,7 @@ struct InlineBatch {
 
 pub struct RenderedInlineBatch {
     pub contents: Vec<String>,
+    pub(crate) diagnostics: Vec<Diagnostic>,
     sources: HashSet<Slug>,
     dependencies: Dependencies,
 }
@@ -52,7 +51,6 @@ thread_local! {
 /// Reset the inline formula registry for a new parse phase.
 pub fn begin_inline_batch() {
     INLINE_BATCH.with(|batch| batch.borrow_mut().pending.clear());
-    reset_typst_render_error_flag();
     crate::typst::cache::begin_phase();
 }
 
@@ -65,29 +63,33 @@ pub(crate) fn push_inline_formula(shareds: String, source: String, current_slug:
     })
 }
 
-/// Compile all formulas collected during the current parse phase. Returns the
-/// compiled inline svg html in formula order.
+/// Compile all formulas collected during the current parse phase. Return HTML
+/// in formula order and diagnostics for failed positions, which remain empty.
 pub fn compile_inline_batch() -> eyre::Result<RenderedInlineBatch> {
     let pending = INLINE_BATCH.with(|batch| std::mem::take(&mut batch.borrow_mut().pending));
     let sources: HashSet<Slug> = pending.iter().map(|(_, _, slug)| *slug).collect();
-    let (contents, dependencies) = typst_cache::capture_dependencies(|| compile_pending(pending))?;
-    let dependencies = if sources.is_empty() {
+    let ((contents, diagnostics), dependencies) =
+        typst_cache::capture_dependencies(|| Ok(compile_pending(pending)))?;
+    // Failed batches must not publish a successful dependency report.
+    let dependencies = if sources.is_empty() || !diagnostics.is_empty() {
         dependencies
     } else {
         typst_cache::share_inline_dependencies(dependencies)?
     };
     Ok(RenderedInlineBatch {
         contents,
+        diagnostics,
         sources,
         dependencies,
     })
 }
 
-fn compile_pending(pending: Vec<(String, String, Slug)>) -> eyre::Result<Vec<String>> {
+fn compile_pending(pending: Vec<(String, String, Slug)>) -> (Vec<String>, Vec<Diagnostic>) {
     if pending.is_empty() {
-        return finish_render_results(Vec::new());
+        return (Vec::new(), Vec::new());
     }
 
+    let mut diagnostics = Vec::new();
     let groups = group_formulas(&pending);
     let results = match typst_cli::source_to_inline_svgs_grouped(&groups) {
         Ok(segments) => wrap_segments(segments),
@@ -118,8 +120,8 @@ fn compile_pending(pending: Vec<(String, String, Slug)>) -> eyre::Result<Vec<Str
                             match typst_cli::source_to_inline_svg(&src) {
                                 Ok(html) => results.push(html),
                                 Err(err) => {
-                                    record_typst_render_error();
-                                    color_print::ceprintln!("<r>{:?} at {}</>", err, slug);
+                                    diagnostics
+                                        .push(Diagnostic::fatal(format!("{err:?} at {slug}")));
                                     results.push(String::new());
                                 }
                             }
@@ -131,14 +133,7 @@ fn compile_pending(pending: Vec<(String, String, Slug)>) -> eyre::Result<Vec<Str
             results
         }
     };
-    finish_render_results(results)
-}
-
-fn finish_render_results(results: Vec<String>) -> eyre::Result<Vec<String>> {
-    if typst_render_error_detected() {
-        return Err(eyre::eyre!("Typst rendering failed"));
-    }
-    Ok(results)
+    (results, diagnostics)
 }
 
 /// Group consecutive formulas sharing the same shareds header. Consecutive
@@ -238,22 +233,6 @@ pub fn resolve_inline_typst_section(section: &mut UnresolvedSection, results: &[
     for value in section.metadata.custom.values_mut() {
         resolve_inline_typst_content(value, results);
     }
-}
-
-/// Whether any typst compilation failed while elaborating markdown content.
-/// Used by the `check` command to fail when render errors are detected.
-static TYPST_RENDER_ERROR_FLAG: AtomicBool = AtomicBool::new(false);
-
-pub fn reset_typst_render_error_flag() {
-    TYPST_RENDER_ERROR_FLAG.store(false, Ordering::Relaxed);
-}
-
-pub fn typst_render_error_detected() -> bool {
-    TYPST_RENDER_ERROR_FLAG.load(Ordering::Relaxed)
-}
-
-pub(crate) fn record_typst_render_error() {
-    TYPST_RENDER_ERROR_FLAG.store(true, Ordering::Relaxed);
 }
 
 #[cfg(test)]

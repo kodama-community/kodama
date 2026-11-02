@@ -4,18 +4,20 @@
 
 use super::{
     content::EventExtended,
-    inline_content::{is_formatting_end, is_formatting_start, warn_unexpected},
+    inline_content::{
+        is_formatting_end, is_formatting_start, render_label, render_source_label, warn_unexpected,
+    },
     link_action::url_action,
     path_resolution::{relocate_trees_path_with_trees_root, resolve_section_url},
     url::{is_allowed_scheme, is_unsafe_scheme, scheme_name},
 };
-use std::{
-    fs, mem,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::{fs, mem};
 
 use crate::{
-    compiler::section::{EmbedContent, HTMLContent, LocalLink, SectionOption},
+    compiler::{
+        section::{EmbedContent, HTMLContent, LocalLink, SectionOption},
+        Diagnostic, ParseDiagnostics,
+    },
     environment::{assets_dir_without_root, root_dir, trees_dir_without_root},
     html::{html_code_block, html_link},
     markdown::link_action::State,
@@ -24,23 +26,10 @@ use crate::{
     slug::Slug,
 };
 use camino::Utf8PathBuf;
-use pulldown_cmark::{html, Event, Tag, TagEnd};
+use pulldown_cmark::{Event, Tag, TagEnd};
 
-static INCLUDE_READ_ERROR_FLAG: AtomicBool = AtomicBool::new(false);
-
-pub fn reset_include_error_flag() {
-    INCLUDE_READ_ERROR_FLAG.store(false, Ordering::Relaxed);
-}
-
-pub fn include_error_detected() -> bool {
-    INCLUDE_READ_ERROR_FLAG.load(Ordering::Relaxed)
-}
-
-fn record_include_error() {
-    INCLUDE_READ_ERROR_FLAG.store(true, Ordering::Relaxed);
-}
-
-pub struct Embed<'e, E> {
+pub struct Embed<'d, 'e, E> {
+    diagnostics: &'d ParseDiagnostics,
     events: E,
     current_slug: Slug,
     assets_dir_name: String,
@@ -51,13 +40,18 @@ pub struct Embed<'e, E> {
     nest: usize,
 }
 
-impl<'e, E> Embed<'e, E> {
-    pub fn process(events: E, current_slug: Slug) -> Self {
+impl<'d, 'e, E> Embed<'d, 'e, E> {
+    pub(crate) fn process(
+        events: E,
+        current_slug: Slug,
+        diagnostics: &'d ParseDiagnostics,
+    ) -> Self {
         Self::process_with_roots(
             events,
             current_slug,
             assets_dir_without_root(),
             trees_dir_without_root(),
+            diagnostics,
         )
     }
 
@@ -66,8 +60,10 @@ impl<'e, E> Embed<'e, E> {
         current_slug: Slug,
         assets_dir_name: String,
         trees_dir_name: String,
+        diagnostics: &'d ParseDiagnostics,
     ) -> Self {
         Self {
+            diagnostics,
             events,
             current_slug,
             assets_dir_name,
@@ -88,7 +84,7 @@ impl<'e, E> Embed<'e, E> {
     }
 }
 
-impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
+impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'_, 'e, E> {
     type Item = EventExtended<'e>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -171,9 +167,11 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                                     option = opt;
                                     *t = rest.into();
                                 }
-                                let mut title = String::new();
-                                html::push_html(&mut title, content.into_iter());
-                                Some(title)
+                                Some(render_label(
+                                    content.into_iter(),
+                                    self.current_slug,
+                                    self.diagnostics,
+                                ))
                             } else {
                                 None
                             };
@@ -185,9 +183,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                             let language_tag = if content.is_empty() {
                                 Some("plain".to_string())
                             } else {
-                                let mut text = String::new();
-                                html::push_html(&mut text, content.into_iter());
-                                Some(text)
+                                Some(render_source_label(content.into_iter()))
                             };
 
                             let include_path = root_dir().join(&url);
@@ -195,13 +191,10 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                                 crate::typst::cache::record_file(&include_path);
                             }
                             let content = fs::read_to_string(&include_path).unwrap_or_else(|err| {
-                                record_include_error();
-                                color_print::ceprintln!(
-                                    "<y>Warning: failed to include file `{}` resolved to `{}`: {}</>",
-                                    url,
-                                    include_path,
-                                    err
-                                );
+                                self.diagnostics.borrow_mut().push(Diagnostic::warning(format!(
+                                    "failed to include file `{url}` resolved to `{include_path}` at `{}`: {err}",
+                                    self.current_slug,
+                                )));
                                 format!("failed to include file: {url}")
                             });
                             let escaped = htmlize::escape_text(content);
@@ -213,16 +206,21 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                             let text = if content.is_empty() {
                                 None
                             } else {
-                                let mut text = String::new();
-                                html::push_html(&mut text, content.into_iter());
-                                Some(text)
+                                Some(render_label(
+                                    content.into_iter(),
+                                    self.current_slug,
+                                    self.diagnostics,
+                                ))
                             };
                             return Some(LocalLink { url, text }.into());
                         }
                         State::ExternalLink => {
                             let (url, content) = self.exit();
-                            let mut text = String::new();
-                            html::push_html(&mut text, content.into_iter());
+                            let text = render_label(
+                                content.into_iter(),
+                                self.current_slug,
+                                self.diagnostics,
+                            );
                             let formatted_title;
                             let title = if url == text {
                                 &url
@@ -235,8 +233,11 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                         }
                         State::AssetFile => {
                             let (url, content) = self.exit();
-                            let mut text = String::new();
-                            html::push_html(&mut text, content.into_iter());
+                            let text = render_label(
+                                content.into_iter(),
+                                self.current_slug,
+                                self.diagnostics,
+                            );
                             let html = html_link(&url, &text, &text, State::AssetFile.strify());
                             return Some(Event::Html(html.into()).into());
                         }
@@ -245,8 +246,7 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                             let text = if content.is_empty() {
                                 String::new()
                             } else {
-                                let mut html = String::new();
-                                html::push_html(&mut html, content.into_iter());
+                                let html = render_source_label(content.into_iter());
                                 HTMLContent::Plain(html).remove_all_tags()
                             };
                             return Some(Event::Text(text.into()).into());
@@ -270,23 +270,6 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                         warn_unexpected("block-level end tag", "link text");
                     }
                 }
-                Event::InlineMath(ref math) => {
-                    let replaced = Event::Text(format!("${math}$").into());
-                    if is_inline_allowed(&self.state) {
-                        self.content.push(replaced);
-                    } else {
-                        return Some(replaced.into());
-                    }
-                }
-                // TODO: move away from mangling math manually
-                Event::DisplayMath(ref math) => {
-                    let replaced = Event::Text(format!("$${math}$$").into());
-                    if is_inline_allowed(&self.state) {
-                        self.content.push(replaced);
-                    } else {
-                        return Some(replaced.into());
-                    }
-                }
                 Event::SoftBreak if is_inline_allowed(&self.state) => {
                     self.content.push(Event::Text(" ".into()));
                 }
@@ -294,6 +277,8 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for Embed<'e, E> {
                     warn_unexpected("rule or task list marker", "link text");
                 }
                 Event::Text(_)
+                | Event::InlineMath(_)
+                | Event::DisplayMath(_)
                 | Event::InlineHtml(_)
                 | Event::Code(_)
                 | Event::Html(_)
@@ -549,6 +534,7 @@ mod tests {
             Slug::new("index"),
             ASSETS_DIR.to_string(),
             TREES_DIR.to_string(),
+            &ParseDiagnostics::default(),
         )
         .collect::<Vec<_>>();
 
@@ -573,6 +559,7 @@ mod tests {
             Slug::new("index"),
             ASSETS_DIR.to_string(),
             TREES_DIR.to_string(),
+            &ParseDiagnostics::default(),
         )
         .collect::<Vec<_>>();
 
@@ -611,6 +598,7 @@ mod tests {
             Slug::new("index"),
             ASSETS_DIR.to_string(),
             TREES_DIR.to_string(),
+            &ParseDiagnostics::default(),
         )
         .collect::<Vec<_>>();
 
@@ -640,6 +628,7 @@ mod tests {
             Slug::new("index"),
             ASSETS_DIR.to_string(),
             TREES_DIR.to_string(),
+            &ParseDiagnostics::default(),
         )
         .collect::<Vec<_>>();
 
@@ -668,6 +657,7 @@ mod tests {
             Slug::new("index"),
             ASSETS_DIR.to_string(),
             TREES_DIR.to_string(),
+            &ParseDiagnostics::default(),
         )
         .collect::<Vec<_>>();
 
@@ -698,6 +688,7 @@ mod tests {
             Slug::new("index"),
             ASSETS_DIR.to_string(),
             TREES_DIR.to_string(),
+            &ParseDiagnostics::default(),
         )
         .collect::<Vec<_>>();
 
@@ -722,6 +713,7 @@ mod tests {
             Slug::new("index"),
             ASSETS_DIR.to_string(),
             TREES_DIR.to_string(),
+            &ParseDiagnostics::default(),
         )
         .collect::<Vec<_>>();
 

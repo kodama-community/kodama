@@ -2,8 +2,12 @@
 // Released under the GPL-3.0 license as described in the file LICENSE.
 // Authors: Kokic (@kokic), Spore (@s-cerevisiae)
 
-use pulldown_cmark::{Event, Tag, TagEnd};
+use pulldown_cmark::{html, Event, Tag, TagEnd};
 use pulldown_cmark_escape::{escape_html, escape_html_body_text};
+
+use crate::{compiler::ParseDiagnostics, slug::Slug};
+
+use super::math;
 
 /// Escaping strategy when rendering inline content to a string.
 #[derive(Clone, Copy)]
@@ -43,6 +47,41 @@ pub fn warn_unexpected(what: &str, context: &str) {
     color_print::ceprintln!(
         "<y>Warning: unexpected {what} inside {context}; it will be ignored.</>"
     );
+}
+
+/// Serialize a collected link label or embed title. `Embed` has already limited
+/// this buffer to inline formatting and leaf events, so every math event here
+/// belongs to rich text (not image alt text or another raw-source context).
+pub(crate) fn render_label<'e>(
+    events: impl Iterator<Item = Event<'e>>,
+    slug: Slug,
+    diagnostics: &ParseDiagnostics,
+) -> String {
+    let events = events.map(|event| match event {
+        Event::InlineMath(source) => {
+            Event::InlineHtml(math::render_html(&source, false, slug, diagnostics).into())
+        }
+        Event::DisplayMath(source) => {
+            Event::InlineHtml(math::render_html(&source, true, slug, diagnostics).into())
+        }
+        other => other,
+    });
+    let mut out = String::new();
+    html::push_html(&mut out, events);
+    out
+}
+
+/// Serialize a label without compiling its math, preserving the existing HTML
+/// and escaping behavior for include language tags and unsafe-link downgrades.
+pub fn render_source_label<'e>(events: impl Iterator<Item = Event<'e>>) -> String {
+    let events = events.map(|event| match event {
+        Event::InlineMath(source) => Event::Text(format!("${source}$").into()),
+        Event::DisplayMath(source) => Event::Text(format!("$${source}$$").into()),
+        other => other,
+    });
+    let mut out = String::new();
+    html::push_html(&mut out, events);
+    out
 }
 
 /// Writes a single leaf inline event into `out` following raw-text semantics:

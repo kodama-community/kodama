@@ -747,6 +747,7 @@ mod tests {
                     "[](/guide/fig.typ#:block)",
                     Slug::new("guide/index"),
                     Slug::new("guide/index"),
+                    &crate::compiler::ParseDiagnostics::default(),
                 )
                 .unwrap();
                 let mut shallows = HashMap::new();

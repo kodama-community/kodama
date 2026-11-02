@@ -17,6 +17,7 @@ serde_json = { version = "1.0.154", default-features = false, features = ["std"]
 walkdir = "2.5.0"
 notify = { version = "8.2.0", default-features = false, features = ["macos_fsevent"] }
 toml = { version = "1.1.8", default-features = false, features = ["display", "parse", "serde", "std"] }
+tonic = { version = "0.2.0", path = "vendor/tonic", features = ["html"] }
 url = { version = "2.5.8", default-features = false, features = ["std"] }
 camino = { version = "1.2.6", default-features = false }
 color-print = "0.3.7"

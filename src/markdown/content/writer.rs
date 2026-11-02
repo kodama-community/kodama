@@ -9,9 +9,14 @@ use pulldown_cmark::{
 };
 use pulldown_cmark_escape::{escape_href, escape_html, escape_html_body_text};
 
-use crate::compiler::section::{LazyContent, LazyContents};
+use crate::compiler::{
+    section::{LazyContent, LazyContents},
+    ParseDiagnostics,
+};
 use crate::markdown::inline_content::{write_leaf, Escape};
+use crate::markdown::math;
 use crate::markdown::url::{is_allowed_scheme, is_unsafe_scheme, scheme_name};
+use crate::slug::Slug;
 
 use super::EventExtended;
 
@@ -31,12 +36,16 @@ fn is_safe_link_destination(dest: &str) -> bool {
     !is_unsafe_scheme(&scheme) && is_allowed_scheme(&scheme)
 }
 
-pub(super) struct HtmlWriter<'e, I> {
+pub(super) struct HtmlWriter<'d, 'e, I> {
+    diagnostics: &'d ParseDiagnostics,
     /// Iterator supplying events.
     iter: I,
 
     /// Contents being written.
     contents: LazyContents,
+
+    /// Source section for math-rendering diagnostics.
+    slug: Slug,
 
     /// Whether or not the last write wrote a newline.
     end_newline: bool,
@@ -53,14 +62,21 @@ pub(super) struct HtmlWriter<'e, I> {
     paragraph_started: bool,
 }
 
-impl<'e, I> HtmlWriter<'e, I>
+impl<'d, 'e, I> HtmlWriter<'d, 'e, I>
 where
     I: Iterator<Item = EventExtended<'e>>,
 {
-    pub(super) fn new(iter: I, contents: LazyContents) -> Self {
+    pub(super) fn new(
+        iter: I,
+        contents: LazyContents,
+        slug: Slug,
+        diagnostics: &'d ParseDiagnostics,
+    ) -> Self {
         Self {
+            diagnostics,
             iter,
             contents,
+            slug,
             end_newline: true,
             in_non_writing_block: false,
             table_state: TableState::Head,
@@ -173,15 +189,16 @@ where
                 }
                 InlineMath(text) => {
                     self.ensure_paragraph_started();
-                    self.write(r#"<span class="math math-inline">"#);
-                    escape_html(self.writer(), &text).unwrap();
-                    self.write("</span>");
+                    self.write(&math::render_html(
+                        &text,
+                        false,
+                        self.slug,
+                        self.diagnostics,
+                    ));
                 }
                 DisplayMath(text) => {
                     self.ensure_paragraph_started();
-                    self.write(r#"<span class="math math-display">"#);
-                    escape_html(self.writer(), &text).unwrap();
-                    self.write("</span>");
+                    self.write(&math::render_html(&text, true, self.slug, self.diagnostics));
                 }
                 Html(html) | InlineHtml(html) => {
                     self.ensure_paragraph_started();

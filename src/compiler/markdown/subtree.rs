@@ -615,7 +615,10 @@ mod tests {
     use super::super::{parse_markdown_sections_from_source, parse_markdown_source};
     use super::*;
     use crate::compiler::anonymous_slug::{ANON_SUBTREE_ORDINAL_INITIAL, ANON_SUBTREE_SLUG_PREFIX};
-    use crate::{compiler::HTMLContent, slug::Slug};
+    use crate::{
+        compiler::{HTMLContent, ParseDiagnostics},
+        slug::Slug,
+    };
 
     #[test]
     fn test_extract_shared_reference_definitions_skips_fenced_code() {
@@ -655,6 +658,7 @@ mod tests {
             &subtree_source,
             extracted.subtrees[0].slug,
             extracted.subtrees[0].source_slug,
+            &ParseDiagnostics::default(),
         )
         .unwrap();
         let html = child.content.as_str().unwrap_or_default();
@@ -683,6 +687,7 @@ mod tests {
             &subtree_source,
             extracted.subtrees[0].slug,
             extracted.subtrees[0].source_slug,
+            &ParseDiagnostics::default(),
         )
         .unwrap();
         let html = child.content.as_str().unwrap_or_default();
@@ -713,6 +718,7 @@ mod tests {
             &subtree_source,
             extracted.subtrees[0].slug,
             extracted.subtrees[0].source_slug,
+            &ParseDiagnostics::default(),
         )
         .unwrap();
         let html = child.content.as_str().unwrap_or_default();
@@ -836,6 +842,7 @@ anonymous body
             &extracted.root_source,
             Slug::new("index"),
             Slug::new("index"),
+            &ParseDiagnostics::default(),
         )
         .unwrap();
         patch_root_subtree_embeds(&mut root, &extracted.subtrees).unwrap();
@@ -843,6 +850,7 @@ anonymous body
             &extracted.subtrees[0].body,
             extracted.subtrees[0].slug,
             extracted.subtrees[0].source_slug,
+            &ParseDiagnostics::default(),
         )
         .unwrap();
         apply_subtree_defaults(&mut anonymous, &extracted.subtrees[0]);
@@ -882,6 +890,7 @@ child body
             &extracted.root_source,
             Slug::new("book/index"),
             Slug::new("book/index"),
+            &ParseDiagnostics::default(),
         )
         .unwrap();
         patch_root_subtree_embeds(&mut root, &extracted.subtrees).unwrap();
@@ -902,6 +911,7 @@ child body
             &extracted.subtrees[0].body,
             extracted.subtrees[0].slug,
             extracted.subtrees[0].source_slug,
+            &ParseDiagnostics::default(),
         )
         .unwrap();
         apply_subtree_defaults(&mut child, &extracted.subtrees[0]);
@@ -943,7 +953,12 @@ outer
 </remark>
 "#;
 
-        let sections = parse_markdown_sections_from_source(source, Slug::new("index")).unwrap();
+        let sections = parse_markdown_sections_from_source(
+            source,
+            Slug::new("index"),
+            &ParseDiagnostics::default(),
+        )
+        .unwrap();
         assert!(sections.iter().any(|(slug, _)| *slug == Slug::new("index")));
         assert!(sections
             .iter()
@@ -976,8 +991,12 @@ outer
 </remark>
 "#;
 
-        let sections =
-            parse_markdown_sections_from_source(source, Slug::new("book/index")).unwrap();
+        let sections = parse_markdown_sections_from_source(
+            source,
+            Slug::new("book/index"),
+            &ParseDiagnostics::default(),
+        )
+        .unwrap();
         assert!(sections
             .iter()
             .any(|(slug, _)| *slug == Slug::new("book/child")));
@@ -1010,7 +1029,12 @@ outer
 </lemma>
 "#;
 
-        let sections = parse_markdown_sections_from_source(source, Slug::new("GALA")).unwrap();
+        let sections = parse_markdown_sections_from_source(
+            source,
+            Slug::new("GALA"),
+            &ParseDiagnostics::default(),
+        )
+        .unwrap();
         let anonymous_slugs: Vec<Slug> = sections
             .iter()
             .filter_map(|(slug, section)| section.metadata.internal_anon_subtree().then_some(*slug))

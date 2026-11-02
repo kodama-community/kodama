@@ -4,7 +4,13 @@
 
 use pulldown_cmark::Event;
 
-use crate::compiler::section::{EmbedContent, LazyContents, LocalLink};
+use crate::{
+    compiler::{
+        section::{EmbedContent, LazyContents, LocalLink},
+        ParseDiagnostics,
+    },
+    slug::Slug,
+};
 
 mod writer;
 use writer::HtmlWriter;
@@ -34,8 +40,12 @@ impl<'e> From<Event<'e>> for EventExtended<'e> {
     }
 }
 
-pub fn to_contents<'e, I: Iterator<Item = EventExtended<'e>>>(iter: I) -> LazyContents {
-    HtmlWriter::new(iter, Vec::new()).run()
+pub(crate) fn to_contents<'e, I: Iterator<Item = EventExtended<'e>>>(
+    iter: I,
+    slug: Slug,
+    diagnostics: &ParseDiagnostics,
+) -> LazyContents {
+    HtmlWriter::new(iter, Vec::new(), slug, diagnostics).run()
 }
 
 #[cfg(test)]

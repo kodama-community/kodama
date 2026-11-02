@@ -138,6 +138,11 @@ pub fn allow_unsafe_html() -> bool {
     super::read_environment(lock, |env| env.config.build.allow_unsafe_html)
 }
 
+pub fn pre_render_math() -> bool {
+    let lock = super::environment_lock(false);
+    super::read_environment(lock, |env| env.config.build.pre_render_math)
+}
+
 pub fn elaborate_cjk_text() -> bool {
     with_config(|cfg| cfg.build.elaborate_cjk_text)
 }

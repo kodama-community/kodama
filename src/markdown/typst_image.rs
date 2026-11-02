@@ -11,6 +11,7 @@ use crate::{
     compiler::{
         inline_typst::{self, INLINE_PLACEHOLDER},
         section::{TypstFigure, TypstFigureKind},
+        Diagnostic, ParseDiagnostics,
     },
     environment::{self, output_path},
     markdown::link_action::State,
@@ -24,7 +25,8 @@ use super::{
     path_resolution::{relocate_trees_path, resolve_section_url},
 };
 
-pub struct TypstImage<E> {
+pub struct TypstImage<'d, E> {
+    diagnostics: &'d ParseDiagnostics,
     events: E,
     state: State,
     shareds: Vec<String>,
@@ -34,9 +36,14 @@ pub struct TypstImage<E> {
     nest: usize,
 }
 
-impl<E> TypstImage<E> {
-    pub fn process(events: E, current_slug: Slug) -> Self {
+impl<'d, E> TypstImage<'d, E> {
+    pub(crate) fn process(
+        events: E,
+        current_slug: Slug,
+        diagnostics: &'d ParseDiagnostics,
+    ) -> Self {
         Self {
+            diagnostics,
             events,
             state: State::None,
             shareds: Vec::new(),
@@ -57,16 +64,43 @@ impl<E> TypstImage<E> {
 /// Collects a leaf event into the content buffer according to the current
 /// state: raw source text for inline typst / shared imports, HTML-escaped text
 /// for figure captions.
-fn collect(state: &State, content: &mut Option<String>, e: Event<'_>) {
+fn collect(
+    state: &State,
+    content: &mut Option<String>,
+    e: Event<'_>,
+    slug: Slug,
+    diagnostics: &ParseDiagnostics,
+) {
     let c = content.get_or_insert_default();
-    let escape = match state {
-        State::ImageSpan | State::ImageBlock | State::ImageCode => Escape::Body,
-        _ => Escape::Raw,
+    let is_caption = matches!(
+        state,
+        State::ImageSpan | State::ImageBlock | State::ImageCode
+    );
+    if is_caption {
+        let formula = match &e {
+            Event::InlineMath(source) => Some((source.as_ref(), false)),
+            Event::DisplayMath(source) => Some((source.as_ref(), true)),
+            _ => None,
+        };
+        if let Some((source, display)) = formula {
+            c.push_str(&super::math::render_html(
+                source,
+                display,
+                slug,
+                diagnostics,
+            ));
+            return;
+        }
+    }
+    let escape = if is_caption {
+        Escape::Body
+    } else {
+        Escape::Raw
     };
     write_leaf(c, e, escape, true);
 }
 
-impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
+impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<'_, E> {
     type Item = Event<'e>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -114,38 +148,22 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
                         State::Html => {
                             let typst_url =
                                 typst_path(self.current_slug, &self.url.take().unwrap_or_default());
-                            let html = if environment::is_check() {
+                            let rendered = if environment::is_check() {
                                 let trees_dir = environment::trees_dir();
-                                match typst_cli::file_to_html(
-                                    typst_url.as_str(),
-                                    trees_dir.as_str(),
-                                ) {
-                                    Ok(inline_html) => inline_html,
-                                    Err(err) => {
-                                        inline_typst::record_typst_render_error();
-                                        color_print::ceprintln!(
-                                            "<r>{:?} at {}</>",
-                                            err,
-                                            self.current_slug
-                                        );
-                                        String::new()
-                                    }
-                                }
+                                typst_cli::file_to_html(typst_url.as_str(), trees_dir.as_str())
                             } else {
                                 let html_path = output_path(typst_url.with_extension("html"));
-                                match write_to_inline_html(typst_url, html_path) {
-                                    Ok(inline_html) => inline_html,
-                                    Err(err) => {
-                                        inline_typst::record_typst_render_error();
-                                        color_print::ceprintln!(
-                                            "<r>{:?} at {}</>",
-                                            err,
-                                            self.current_slug
-                                        );
-                                        String::new()
-                                    }
-                                }
+                                write_to_inline_html(typst_url, html_path)
                             };
+                            let html = rendered.unwrap_or_else(|err| {
+                                self.diagnostics
+                                    .borrow_mut()
+                                    .push(Diagnostic::fatal(format!(
+                                        "{err:?} at {}",
+                                        self.current_slug,
+                                    )));
+                                String::new()
+                            });
 
                             self.exit();
                             return Some(Event::Html(html.into()));
@@ -299,7 +317,13 @@ impl<'e, E: Iterator<Item = Event<'e>>> Iterator for TypstImage<E> {
                 }
                 _ => {
                     if allow_inline(&self.state) {
-                        collect(&self.state, &mut self.content, e);
+                        collect(
+                            &self.state,
+                            &mut self.content,
+                            e,
+                            self.current_slug,
+                            self.diagnostics,
+                        );
                     } else {
                         return Some(e);
                     }
@@ -414,7 +438,8 @@ mod tests {
         crate::environment::mock_environment().unwrap();
         let source = "[a <b> *c* `d` $x$](fig.typ#:span)";
         let events = pulldown_cmark::Parser::new_ext(source, crate::compiler::markdown::OPTIONS);
-        let actual = TypstImage::process(events, Slug::new("index")).collect::<Vec<_>>();
+        let actual = TypstImage::process(events, Slug::new("index"), &ParseDiagnostics::default())
+            .collect::<Vec<_>>();
 
         let html = actual
             .iter()

@@ -10,6 +10,7 @@ pub mod figure;
 pub mod footnote;
 pub mod inline_content;
 pub mod link_action;
+pub(crate) mod math;
 pub mod metadata;
 pub mod path_resolution;
 pub mod text_elaborator;

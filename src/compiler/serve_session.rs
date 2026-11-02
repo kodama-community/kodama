@@ -15,7 +15,7 @@ use crate::{
 use super::section::UnresolvedSection;
 use super::{
     incremental::{dirty_source_slugs, source_relative_path},
-    inline_typst, parse_source_sections,
+    inline_typst, parse_source_sections, report_build_diagnostics,
     stale::cleanup_stale_slug_artifacts,
     state::CompileCache,
     write_compiled_state, write_entry_cache, CompileOutputs, DirtySet, ParsedSections, SourceCache,
@@ -117,12 +117,13 @@ impl ServeCompileSession {
             };
             let relative_path = source_relative_path(slug, kind);
             let entry_path = environment::entry_file_path(relative_path.as_path());
-            let (sections, dependencies) =
+            let (output, dependencies) =
                 typst_cache::capture_dependencies(|| parse_source_sections(slug, kind))?;
+            report_build_diagnostics(&output.diagnostics)?;
             let source_meta = environment::relative_source_meta(&relative_path);
             parsed.push((
                 slug,
-                sections,
+                output.sections,
                 SourceCache {
                     entry_path,
                     source_meta,
@@ -135,6 +136,7 @@ impl ServeCompileSession {
         // Compile all freshly parsed inline formulas in one batch, then resolve
         // their placeholders and write the entry caches.
         let batch = inline_typst::compile_inline_batch()?;
+        report_build_diagnostics(&batch.diagnostics)?;
         for (source_slug, mut sections, mut cache) in parsed {
             for (_, section) in &mut sections {
                 inline_typst::resolve_inline_typst_section(section, &batch.contents);

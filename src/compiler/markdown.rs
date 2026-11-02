@@ -24,7 +24,7 @@ use crate::{
 
 use super::anonymous_slug::AnonymousSlugState;
 use super::subtree_slug::ensure_unique_section_slugs;
-use super::{section::LazyContent, HTMLContent, UnresolvedSection};
+use super::{section::LazyContent, HTMLContent, ParseDiagnostics, UnresolvedSection};
 
 mod subtree;
 use subtree::{
@@ -52,20 +52,29 @@ pub fn initialize(slug: Slug) -> eyre::Result<String> {
         .wrap_err_with(|| eyre!("failed to read markdown file `{:?}`", markdown_path))
 }
 
-pub fn parse_markdown_sections(source_slug: Slug) -> eyre::Result<Vec<(Slug, UnresolvedSection)>> {
+pub(crate) fn parse_markdown_sections(
+    source_slug: Slug,
+    diagnostics: &ParseDiagnostics,
+) -> eyre::Result<Vec<(Slug, UnresolvedSection)>> {
     let source = initialize(source_slug)?;
-    parse_markdown_sections_from_source(&source, source_slug)
+    parse_markdown_sections_from_source(&source, source_slug, diagnostics)
 }
 
 pub(super) fn parse_markdown_sections_from_source(
     source: &str,
     source_slug: Slug,
+    diagnostics: &ParseDiagnostics,
 ) -> eyre::Result<Vec<(Slug, UnresolvedSection)>> {
     let extracted = extract_subtrees_root(source, source_slug)?;
     let shared_reference_definitions = extract_shared_reference_definitions(&extracted.root_source);
 
-    let mut root = parse_markdown_source(&extracted.root_source, source_slug, source_slug)
-        .wrap_err_with(|| eyre!("failed to parse root markdown section `{source_slug}`"))?;
+    let mut root = parse_markdown_source(
+        &extracted.root_source,
+        source_slug,
+        source_slug,
+        diagnostics,
+    )
+    .wrap_err_with(|| eyre!("failed to parse root markdown section `{source_slug}`"))?;
     patch_root_subtree_embeds(&mut root, &extracted.subtrees)?;
 
     let mut sections = vec![(source_slug, root)];
@@ -98,14 +107,19 @@ pub(super) fn parse_markdown_sections_from_source(
         }
         let subtree_source =
             compose_subtree_source(&extracted_nested.root_source, &shared_reference_definitions);
-        let mut section = parse_markdown_source(&subtree_source, subtree.slug, subtree.source_slug)
-            .wrap_err_with(|| {
-                eyre!(
-                    "failed to parse subtree section `{}` (from `{}`)",
-                    subtree.slug,
-                    source_slug
-                )
-            })?;
+        let mut section = parse_markdown_source(
+            &subtree_source,
+            subtree.slug,
+            subtree.source_slug,
+            diagnostics,
+        )
+        .wrap_err_with(|| {
+            eyre!(
+                "failed to parse subtree section `{}` (from `{}`)",
+                subtree.slug,
+                source_slug
+            )
+        })?;
         patch_root_subtree_embeds(&mut section, &nested_subtrees)?;
         apply_subtree_defaults(&mut section, &subtree);
 
@@ -129,6 +143,7 @@ pub(super) fn parse_markdown_source(
     source: &str,
     slug: Slug,
     source_slug: Slug,
+    diagnostics: &ParseDiagnostics,
 ) -> eyre::Result<UnresolvedSection> {
     let mut metadata = HTMLMetaData::with_slug_ext(slug, environment::markdown_suffix());
 
@@ -138,7 +153,7 @@ pub(super) fn parse_markdown_source(
     // Short-circuit on the first metadata error while keeping the stream lazy:
     // once an error is recorded, no further events are emitted downstream.
     let mut metadata_error: Option<eyre::Error> = None;
-    let events = Metadata::process(events, &mut metadata).filter_map(|event| {
+    let events = Metadata::process(events, &mut metadata, diagnostics).filter_map(|event| {
         if metadata_error.is_some() {
             return None;
         }
@@ -154,25 +169,16 @@ pub(super) fn parse_markdown_source(
         let events = crate::html::free_urls::images(events, source_slug);
         let events = Footnote::process(events, slug);
         let events = Figure::process(events);
-        let events = TypstImage::process(
-            events,
-            if environment::is_free() {
-                source_slug
-            } else {
-                slug
-            },
-        );
+        let resource_slug = if environment::is_free() {
+            source_slug
+        } else {
+            slug
+        };
+        let events = TypstImage::process(events, resource_slug, diagnostics);
         let events =
             TextElaborator::process(events).with_enabled(environment::elaborate_cjk_text());
-        let events = Embed::process(
-            events,
-            if environment::is_free() {
-                source_slug
-            } else {
-                slug
-            },
-        );
-        normalize_html_content(to_contents(events))
+        let events = Embed::process(events, resource_slug, diagnostics);
+        normalize_html_content(to_contents(events, slug, diagnostics))
     };
     if let Some(err) = metadata_error {
         return Err(err).wrap_err("failed to parse metadata");
@@ -181,16 +187,20 @@ pub(super) fn parse_markdown_source(
     Ok(UnresolvedSection { metadata, content })
 }
 
-pub fn parse_spanned_markdown(markdown_input: &str, slug: Slug) -> HTMLContent {
+pub(crate) fn parse_spanned_markdown(
+    markdown_input: &str,
+    slug: Slug,
+    diagnostics: &ParseDiagnostics,
+) -> HTMLContent {
     let events = pulldown_cmark::Parser::new_ext(markdown_input, OPTIONS);
     let events = filter_raw_html(events, environment::allow_unsafe_html());
     let events = ignore_paragraph(events);
     let events = crate::html::free_urls::images(events, slug);
     let events = Footnote::process(events, slug);
-    let events = TypstImage::process(events, slug);
+    let events = TypstImage::process(events, slug, diagnostics);
     let events = TextElaborator::process(events).with_enabled(environment::elaborate_cjk_text());
-    let events = Embed::process(events, slug);
-    normalize_html_content(to_contents(events))
+    let events = Embed::process(events, slug, diagnostics);
+    normalize_html_content(to_contents(events, slug, diagnostics))
 }
 
 fn normalize_html_content(mut content: Vec<LazyContent>) -> HTMLContent {

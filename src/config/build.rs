@@ -17,6 +17,8 @@ pub struct Build {
     pub inline_css: bool,
     pub inline_script: bool,
     pub allow_unsafe_html: bool,
+    /// Render Markdown math to HTML during site compilation using tonic.
+    pub pre_render_math: bool,
     pub asref: bool,
     pub output: String,
     pub edit: Option<String>,
@@ -36,6 +38,7 @@ impl Default for Build {
             inline_css: false,
             inline_script: false,
             allow_unsafe_html: false,
+            pre_render_math: false,
             asref: false,
             output: "./publish".to_string(),
             edit: None,
