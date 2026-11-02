@@ -71,21 +71,17 @@ pub struct Config {
     pub suffix: Suffix,
 }
 
-/// Resolve the configuration file path used by project commands.
-///
-/// The given path is authoritative: it is returned as-is when it exists, and a
-/// missing path is an error. The path is never substituted with a file from
-/// another directory, because the configuration file also determines the
-/// project root, and therefore where output is written.
-pub fn resolve_config_path(config_path: &Utf8Path) -> eyre::Result<Utf8PathBuf> {
-    if !config_path.exists() {
-        return Err(eyre::eyre!(
-            "configuration file not found: `{}`\n\
+/// Read exactly the requested configuration file, without searching parent directories.
+pub fn read_config_file(config_path: &Utf8Path) -> eyre::Result<String> {
+    use eyre::WrapErr;
+
+    std::fs::read_to_string(config_path).wrap_err_with(|| {
+        format!(
+            "failed to read configuration file: `{}`\n\
              Run from the site root, or pass the configuration file explicitly, for example `-c ../Kodama.toml`.",
             absolute_display(config_path)
-        ));
-    }
-    Ok(config_path.to_owned())
+        )
+    })
 }
 
 /// Render `path` as an absolute path for diagnostics, without changing the

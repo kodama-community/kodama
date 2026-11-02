@@ -41,12 +41,10 @@ pub struct Environment {
     ///
     /// Derived from the config file location, or the working directory in Free mode.
     pub root: Utf8PathBuf,
-    /// The configuration file in use, when the project was configured from a
-    /// file rather than from built-in defaults.
-    pub config_file: Option<Utf8PathBuf>,
+    /// None denotes the built-in, uninitialized site environment.
+    pub source: Option<config::ConfigSource>,
     pub config: Config,
     pub build_mode: BuildMode,
-    pub free: bool,
 }
 
 static ENVIRONMENT: OnceLock<RwLock<Environment>> = OnceLock::new();
@@ -54,10 +52,9 @@ static ENVIRONMENT: OnceLock<RwLock<Environment>> = OnceLock::new();
 fn default_environment() -> Environment {
     Environment {
         root: "./".into(),
-        config_file: None,
+        source: None,
         config: Config::default(),
         build_mode: BuildMode::Publish,
-        free: false,
     }
 }
 
@@ -136,7 +133,7 @@ fn compute_derived(env: &Environment) -> DerivedCache {
         BuildMode::Serve => crate::config::kodama::DEFAULT_BASE_URL.to_string(),
     };
     DerivedCache {
-        free: env.free,
+        free: matches!(env.source, Some(config::ConfigSource::Free(_))),
         root_dir: root.clone(),
         trees_dir: root.join(&env.config.kodama.trees),
         trees_dir_without_root: env.config.kodama.trees.clone(),
@@ -207,10 +204,11 @@ pub(super) fn with_test_environment_config<R>(
     let _reset = Reset;
     update_environment(Environment {
         root: root.clone(),
-        config_file: Some(root.join(crate::config::DEFAULT_CONFIG_PATH)),
+        source: Some(config::ConfigSource::file(
+            root.join(config::DEFAULT_CONFIG_PATH),
+        )),
         config,
         build_mode,
-        free: false,
     });
     f()
 }
@@ -218,7 +216,7 @@ pub(super) fn with_test_environment_config<R>(
 pub fn init_environment(source: &config::ConfigSource, build_mode: BuildMode) -> eyre::Result<()> {
     match source {
         config::ConfigSource::File(config_path) => {
-            let config_path = config::resolve_config_path(config_path)?;
+            let toml = config::read_config_file(config_path)?;
             let (root, _file_name) =
                 path_utils::split_file_name(&config_path).ok_or_else(|| {
                     eyre!(
@@ -226,14 +224,11 @@ pub fn init_environment(source: &config::ConfigSource, build_mode: BuildMode) ->
                         config_path
                     )
                 })?;
-            let toml = std::fs::read_to_string(&config_path)?;
-
             update_environment(Environment {
                 root: root.to_owned(),
-                config_file: Some(config_path),
+                source: Some(source.clone()),
                 config: config::parse_config(&toml)?,
                 build_mode,
-                free: false,
             });
         }
         config::ConfigSource::Free(root) => {
@@ -248,10 +243,9 @@ pub fn init_environment(source: &config::ConfigSource, build_mode: BuildMode) ->
             config.publish.rss = false;
             update_environment(Environment {
                 root: root.to_owned(),
-                config_file: None,
+                source: Some(source.clone()),
                 config,
                 build_mode,
-                free: true,
             });
         }
     }
@@ -293,7 +287,10 @@ pub fn root_dir() -> Utf8PathBuf {
 }
 
 pub fn config_file() -> Option<Utf8PathBuf> {
-    with_environment(|env| env.config_file.clone())
+    with_environment(|env| match &env.source {
+        Some(config::ConfigSource::File(path)) => Some(path.clone()),
+        _ => None,
+    })
 }
 
 pub fn is_serve() -> bool {
@@ -385,10 +382,9 @@ mod tests {
             &lock,
             Environment {
                 root: Utf8PathBuf::from("site"),
-                config_file: Some(Utf8PathBuf::from("Kodama.toml")),
+                source: Some(config::ConfigSource::file("Kodama.toml")),
                 config: Config::default(),
                 build_mode: BuildMode::Serve,
-                free: false,
             },
         );
 

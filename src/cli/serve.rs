@@ -28,15 +28,12 @@ use watch::{
 #[derive(clap::Args)]
 pub struct ServeCommand {
     /// Path to the configuration file (default: ./Kodama.toml).
-    #[arg(short, long, conflicts_with_all = ["no_config", "free"])]
+    #[arg(short, long, conflicts_with = "free")]
     config: Option<Utf8PathBuf>,
 
     /// Compile and serve documents in place under the current directory, ignoring config.
     #[arg(long)]
     free: bool,
-
-    #[arg(long, hide = true)]
-    no_config: bool,
 
     /// Enable verbose output.
     #[arg(short, long, default_value_t = false)]
@@ -102,7 +99,7 @@ pub fn serve(command: &ServeCommand) -> eyre::Result<()> {
     }
 
     _ = LIVE_RELOAD.set(!command.disable_reload);
-    let source = config_arg::resolve(command.config.as_ref(), command.free, command.no_config)?;
+    let source = config_arg::resolve(command.config.as_ref(), command.free)?;
     let outputs = compile_outputs(command);
     let watch_stats = command.watch_stats;
     let print_json = command.print_json;
@@ -306,7 +303,6 @@ mod tests {
         let command = ServeCommand {
             config: None,
             free: false,
-            no_config: false,
             verbose: false,
             verbose_skip: false,
             disable_reload: false,
@@ -325,7 +321,6 @@ mod tests {
         let command = ServeCommand {
             config: None,
             free: false,
-            no_config: false,
             verbose: false,
             verbose_skip: false,
             disable_reload: false,
@@ -349,7 +344,6 @@ mod tests {
         let command = ServeCommand {
             config: None,
             free: false,
-            no_config: false,
             verbose: false,
             verbose_skip: false,
             disable_reload: false,

@@ -124,7 +124,7 @@ Alias: `kodama s`.
 
 ## Free mode
 
-`build --free`, `serve --free`, and `check --free` use the current directory as the source root. `--free` conflicts with `--config` and ignores any existing `Kodama.toml`. The old `--no-config` flag is retired: it reports an error rather than silently switching to in-place output.
+`build --free`, `serve --free`, and `check --free` use the current directory as the source root. `--free` conflicts with `--config` and ignores any existing `Kodama.toml`.
 
 - Recursively discover Markdown and Typst section sources, including `README.md`. Hidden and underscore-prefixed directories remain excluded from source discovery.
 - Write `.html` beside each source, overwriting an existing file of the same name. `.typ` files compile to adjacent `.svg` files using the existing cache. No `publish` directory is created.

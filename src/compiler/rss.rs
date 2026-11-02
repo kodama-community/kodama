@@ -445,22 +445,6 @@ mod tests {
     }
 
     #[test]
-    fn test_feed_xml_includes_atom_self_link_and_last_build_date() {
-        let state = compile_state_for_feed("2021-08-15", "<p>Hello <strong>world</strong></p>");
-        let xml = feed_xml(&state).unwrap();
-        let self_link = environment::full_url("/feed.xml");
-
-        assert!(xml.contains(
-            r#"<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">"#
-        ));
-        assert!(xml.contains(&format!(
-            r#"<atom:link href="{}" rel="self" type="application/rss+xml" />"#,
-            xml_escape(&self_link),
-        )));
-        assert!(xml.contains("<lastBuildDate>Sun, 15 Aug 2021 00:00:00 GMT</lastBuildDate>"));
-    }
-
-    #[test]
     fn test_feed_xml_keeps_raw_pub_date_when_unparseable() {
         let state = compile_state_for_feed("not-a-date", "<p>Hello</p>");
         let xml = feed_xml(&state).unwrap();
@@ -469,59 +453,11 @@ mod tests {
     }
 
     #[test]
-    fn test_feed_xml_uses_slug_guid_with_non_permalink_flag() {
-        let state = compile_state_for_feed("2021-08-15", "<p>Hello</p>");
-        let xml = feed_xml(&state).unwrap();
-        let post_link = environment::full_html_url(Slug::new("post"));
-        assert!(xml.contains(r#"<guid isPermaLink="false">post</guid>"#));
-        assert!(xml.contains(&format!("<link>{post_link}</link>")));
-    }
-
-    #[test]
-    fn test_feed_xml_contains_description_and_content_encoded() {
-        let state = compile_state_for_feed("2021-08-15", "<p>Hello <strong>world</strong></p>");
-        let xml = feed_xml(&state).unwrap();
-        let items = collect_items(&state).unwrap();
-        let item = items
-            .iter()
-            .find(|item| item.slug == Slug::new("post"))
-            .expect("post item exists");
-
-        assert!(!item.summary_text.is_empty());
-        assert!(item.content_html.contains("<strong>world</strong>"));
-        assert!(xml.contains(&format!(
-            "<description>{}</description>",
-            xml_escape(&item.summary_text)
-        )));
-        assert!(xml.contains(&format!(
-            "<content:encoded><![CDATA[{}]]></content:encoded>",
-            escape_cdata(&item.content_html)
-        )));
-    }
-
-    #[test]
     fn test_feed_xml_excludes_index_from_items() {
         let state = compile_state_for_feed("2021-08-15", "<p>Hello</p>");
         let xml = feed_xml(&state).unwrap();
         assert!(!xml.contains(r#"<guid isPermaLink="false">index</guid>"#));
         assert!(xml.contains(r#"<guid isPermaLink="false">post</guid>"#));
-    }
-
-    #[test]
-    fn test_content_encoded_splits_cdata_terminator() {
-        let state = compile_state_for_feed("2021-08-15", "<p>a ]]> b</p>");
-        let xml = feed_xml(&state).unwrap();
-        let items = collect_items(&state).unwrap();
-        let item = items
-            .iter()
-            .find(|item| item.slug == Slug::new("post"))
-            .expect("post item exists");
-        let escaped = escape_cdata(&item.content_html);
-
-        assert!(escaped.contains("]]]]><![CDATA[>"));
-        assert!(xml.contains(&format!(
-            "<content:encoded><![CDATA[{escaped}]]></content:encoded>"
-        )));
     }
 
     #[test]

@@ -22,15 +22,12 @@ use crate::{
 #[derive(clap::Args)]
 pub struct CheckCommand {
     /// Path to the configuration file (default: ./Kodama.toml).
-    #[arg(short, long, conflicts_with_all = ["no_config", "free"])]
+    #[arg(short, long, conflicts_with = "free")]
     config: Option<Utf8PathBuf>,
 
     /// Check documents under the current directory without reading config.
     #[arg(long)]
     free: bool,
-
-    #[arg(long, hide = true)]
-    no_config: bool,
 
     /// Treat warnings as errors.
     #[arg(long, default_value_t = false)]
@@ -39,7 +36,7 @@ pub struct CheckCommand {
 
 pub fn check(command: &CheckCommand) -> eyre::Result<()> {
     environment::init_environment(
-        &config_arg::resolve(command.config.as_ref(), command.free, command.no_config)?,
+        &config_arg::resolve(command.config.as_ref(), command.free)?,
         BuildMode::Check,
     )?;
     crate::typst::cache::begin_build();

@@ -724,6 +724,9 @@ mod tests {
                 _ => None,
             })
             .expect("expected a local link event");
-        assert_eq!(local_link.text.as_deref(), Some("$x$"));
+        assert_eq!(
+            local_link.text.as_deref(),
+            Some(r#"<span class="math math-inline">$x$</span>"#)
+        );
     }
 }

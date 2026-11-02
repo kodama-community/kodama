@@ -162,19 +162,6 @@ fn free_ignores_an_existing_config_file() {
 }
 
 #[test]
-fn retired_no_config_is_rejected() {
-    let site = Site::new();
-    fs::remove_file(site.0.join("Kodama.toml")).unwrap();
-    fs::remove_dir_all(site.0.join("trees")).unwrap();
-
-    let output = site.run(&["build", "--no-config"]);
-    assert!(!output.status.success());
-    let stderr = stderr_of(&output);
-    assert!(stderr.contains("retired"), "{stderr}");
-    assert!(!site.0.join("publish").exists());
-}
-
-#[test]
 fn config_and_free_conflict() {
     let site = Site::new();
 

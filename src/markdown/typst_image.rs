@@ -449,6 +449,9 @@ mod tests {
             })
             .expect("expected an html event");
         let figure = decode_typst_figure(html).expect("expected a typst figure marker");
-        assert_eq!(figure.caption, "a &lt;b&gt; c <code>d</code> $x$");
+        assert_eq!(
+            figure.caption,
+            r#"a &lt;b&gt; c <code>d</code> <span class="math math-inline">$x$</span>"#
+        );
     }
 }

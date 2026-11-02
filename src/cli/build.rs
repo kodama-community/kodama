@@ -25,15 +25,12 @@ use crate::{
 #[derive(clap::Args)]
 pub struct BuildCommand {
     /// Path to the configuration file (default: ./Kodama.toml).
-    #[arg(short, long, conflicts_with_all = ["no_config", "free"])]
+    #[arg(short, long, conflicts_with = "free")]
     config: Option<Utf8PathBuf>,
 
     /// Compile documents under the current directory to adjacent HTML files, ignoring config.
     #[arg(long)]
     free: bool,
-
-    #[arg(long, hide = true)]
-    no_config: bool,
 
     /// Enable verbose output.
     #[arg(short, long, default_value_t = false)]
@@ -80,7 +77,7 @@ pub fn no_cache_enabled() -> &'static bool {
 /// This function invoked the [`environment::init_environment`] function to initialize the environment
 pub fn build(command: &BuildCommand) -> eyre::Result<()> {
     build_with_dirty(
-        &config_arg::resolve(command.config.as_ref(), command.free, command.no_config)?,
+        &config_arg::resolve(command.config.as_ref(), command.free)?,
         BuildMode::Publish,
         BuildOptions {
             verbose: command.verbose,

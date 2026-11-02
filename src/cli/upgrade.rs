@@ -93,16 +93,15 @@ fn run_upgrade_config(command: &UpgradeConfigCommand) -> eyre::Result<()> {
 }
 
 fn run_upgrade_typst_lib(command: &UpgradeTypstLibCommand) -> eyre::Result<()> {
-    let source_path = config::resolve_config_path(Utf8Path::new(&command.config))?;
-    let source = std::fs::read_to_string(&source_path)
-        .wrap_err_with(|| eyre!("failed to read config file \"{}\"", source_path))?;
+    let source_path = Utf8Path::new(&command.config);
+    let source = config::read_config_file(source_path)?;
     let config = config::parse_config(&source).wrap_err_with(|| {
         eyre!(
             "failed to parse config file \"{}\" while syncing Typst library",
             source_path
         )
     })?;
-    let typ_path = sync_kodama_typ(source_path.as_path(), &config)?;
+    let typ_path = sync_kodama_typ(source_path, &config)?;
     println!("Synced Typst library: {}", typ_path);
     Ok(())
 }
@@ -128,9 +127,8 @@ fn upgrade_config_file(
     config_path: &str,
     output_path: Option<&str>,
 ) -> eyre::Result<UpgradedConfig> {
-    let source_path = config::resolve_config_path(Utf8Path::new(config_path))?;
-    let source = std::fs::read_to_string(&source_path)
-        .wrap_err_with(|| eyre!("failed to read config file \"{}\"", source_path))?;
+    let source_path = Utf8PathBuf::from(config_path);
+    let source = config::read_config_file(&source_path)?;
     let (upgraded, upgraded_config) = upgrade_content(&source)?;
 
     let output_path = output_path
