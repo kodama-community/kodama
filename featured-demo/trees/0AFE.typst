@@ -1,5 +1,5 @@
 
-#import "_lib/kodama.typ": *
+#import "/_lib/kodama.typ": *
 
 #show: kodama
 

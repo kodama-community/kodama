@@ -54,7 +54,7 @@ allow-unsafe-html = true
 Typst sections should import and apply Kodama's Typst library:
 
 ```typst
-#import "_lib/kodama.typ": *
+#import "/_lib/kodama.typ": *
 
 #show: kodama
 
@@ -66,6 +66,8 @@ Typst sections should import and apply Kodama's Typst library:
 
 Content written in Typst.
 ```
+
+The leading `/` resolves the import from Typst's configured root (`trees/` by default), so the same import works for nested sections.
 
 Kodama compiles Typst through the installed Typst command and reads the generated HTML structure to extract metadata, local links, embeds, and subtrees.
 
