@@ -332,9 +332,8 @@ mod tests {
 
     #[test]
     fn test_normalize_new_section_path_appends_typst_when_missing_extension() {
-        let (path, ext) =
-            normalize_new_section_path(Utf8Path::new("notes/foo"), FORMAT_TYPST)
-                .expect("should normalize path");
+        let (path, ext) = normalize_new_section_path(Utf8Path::new("notes/foo"), FORMAT_TYPST)
+            .expect("should normalize path");
 
         assert_eq!(path, Utf8PathBuf::from("notes/foo.typst"));
         assert_eq!(ext, NewSectionExt::Typst);
@@ -342,9 +341,8 @@ mod tests {
 
     #[test]
     fn test_normalize_new_section_path_appends_markdown_when_requested() {
-        let (path, ext) =
-            normalize_new_section_path(Utf8Path::new("notes/foo"), FORMAT_MARKDOWN)
-                .expect("should normalize path");
+        let (path, ext) = normalize_new_section_path(Utf8Path::new("notes/foo"), FORMAT_MARKDOWN)
+            .expect("should normalize path");
 
         assert_eq!(path, Utf8PathBuf::from("notes/foo.md"));
         assert_eq!(ext, NewSectionExt::Markdown);
@@ -352,11 +350,9 @@ mod tests {
 
     #[test]
     fn test_normalize_new_section_path_respects_explicit_extension() {
-        let (typst_path, typst_ext) = normalize_new_section_path(
-            Utf8Path::new("notes/foo.typst"),
-            FORMAT_MARKDOWN,
-        )
-        .expect("should preserve typst path");
+        let (typst_path, typst_ext) =
+            normalize_new_section_path(Utf8Path::new("notes/foo.typst"), FORMAT_MARKDOWN)
+                .expect("should preserve typst path");
         assert_eq!(typst_path, Utf8PathBuf::from("notes/foo.typst"));
         assert_eq!(typst_ext, NewSectionExt::Typst);
 

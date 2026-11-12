@@ -10,7 +10,9 @@ use serde::Serialize;
 
 use crate::{
     compiler::{self, section::HTMLContent},
-    config, entry::HTMLMetaData, environment,
+    config,
+    entry::HTMLMetaData,
+    environment,
     slug::Slug,
 };
 

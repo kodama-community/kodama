@@ -165,7 +165,9 @@ pub(super) fn fold_watch_change_lines(
 
 pub(super) fn missing_path_level(path: &Utf8Path, assets_dir: &Utf8Path) -> MissingPathLevel {
     if path == assets_dir
-        || path.file_name().is_some_and(|name| IMPORT_FILES.contains(&name))
+        || path
+            .file_name()
+            .is_some_and(|name| IMPORT_FILES.contains(&name))
     {
         MissingPathLevel::Hint
     } else {
