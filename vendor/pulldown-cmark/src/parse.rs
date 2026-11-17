@@ -1702,7 +1702,10 @@ impl DecorationStack {
             self.truncate(matching_ix);
             Some(matching_el)
         } else {
-            self.lower_bound = self.stack.len();
+            // A failed tilde match can leave an opener of the other run length.
+            if c != b'~' {
+                self.lower_bound = self.stack.len();
+            }
             None
         }
     }

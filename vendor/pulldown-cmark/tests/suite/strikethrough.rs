@@ -77,7 +77,7 @@ fn strikethrough_test_7() {
 fn strikethrough_test_8() {
     let original = r##"This~is~nothing
 "##;
-    let expected = r##"<p>This~is~nothing</p>
+    let expected = r##"<p>This<del>is</del>nothing</p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, false);
@@ -87,7 +87,7 @@ fn strikethrough_test_8() {
 fn strikethrough_test_9() {
     let original = r##"~This~is~nothing~
 "##;
-    let expected = r##"<p><del>This~is~nothing</del></p>
+    let expected = r##"<p><del>This</del>is<del>nothing</del></p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, false);
@@ -95,9 +95,9 @@ fn strikethrough_test_9() {
 
 #[test]
 fn strikethrough_test_10() {
-    let original = r##"Here I fail to strike out an exclamation point~!~.
+    let original = r##"Here I strike out an exclamation point~!~.
 "##;
-    let expected = r##"<p>Here I fail to strike out an exclamation point~!~.</p>
+    let expected = r##"<p>Here I strike out an exclamation point<del>!</del>.</p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, false);

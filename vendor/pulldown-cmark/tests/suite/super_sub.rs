@@ -37,7 +37,7 @@ fn super_sub_test_3() {
 fn super_sub_test_4() {
     let original = r##"~This~is~nothing~
 "##;
-    let expected = r##"<p><sub>This~is~nothing</sub></p>
+    let expected = r##"<p><sub>This</sub>is<sub>nothing</sub></p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, true, false, false);

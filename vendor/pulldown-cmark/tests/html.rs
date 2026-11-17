@@ -4,6 +4,28 @@
 use pulldown_cmark::{html, BrokenLink, Options, Parser};
 
 #[test]
+fn tilde_allows_surrounding_whitespace() {
+    let options = Options::ENABLE_SUBSCRIPT | Options::ENABLE_STRIKETHROUGH;
+    let mut output = String::new();
+    html::push_html(
+        &mut output,
+        Parser::new_ext("~ sub ~ ~~ deleted ~~", options),
+    );
+    assert_eq!(output, "<p><sub> sub </sub> <del> deleted </del></p>\n");
+}
+
+#[test]
+fn tilde_nesting() {
+    let options = Options::ENABLE_SUBSCRIPT | Options::ENABLE_STRIKETHROUGH;
+    let mut output = String::new();
+    html::push_html(
+        &mut output,
+        Parser::new_ext("~outer ~~inner~~ tail~", options),
+    );
+    assert_eq!(output, "<p><sub>outer <del>inner</del> tail</sub></p>\n");
+}
+
+#[test]
 fn html_test_1() {
     let original = r##"Little header
 

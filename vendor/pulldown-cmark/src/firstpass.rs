@@ -2114,7 +2114,7 @@ fn fixup_end_of_definition_list(tree: &mut Tree<Item>, list_ix: TreeIndex) {
 }
 
 /// Determines whether the delimiter run starting at given index is
-/// left-flanking, with the extension-specific intraword rules.
+/// allowed to open. Tildes are unrestricted; other delimiters use flanking rules.
 /// suffix is &s[ix..], which is passed in as an optimization, since taking
 /// a string subslice is O(n).
 fn delim_run_can_open(
@@ -2124,6 +2124,10 @@ fn delim_run_can_open(
     ix: usize,
     mode: TableParseMode,
 ) -> bool {
+    let delim = suffix.as_bytes()[0];
+    if delim == b'~' {
+        return true;
+    }
     let next_char = if let Some(c) = suffix[run_len..].chars().next() {
         c
     } else {
@@ -2143,22 +2147,14 @@ fn delim_run_can_open(
             return false;
         }
     }
-    let delim = suffix.bytes().next().unwrap();
-    // Double tildes can be intraword.
-    if delim == b'~' && run_len > 1 {
-        return true;
-    }
     let prev_char = s[..ix].chars().last().unwrap();
-    if delim == b'~' && prev_char == '~' && !is_punctuation(next_char) {
-        return true;
-    }
 
     prev_char.is_whitespace()
         || is_punctuation(prev_char) && (delim != b'\'' || ![']', ')'].contains(&prev_char))
 }
 
 /// Determines whether the delimiter run starting at given index is
-/// right-flanking, with the extension-specific intraword rules.
+/// allowed to close. Tildes are unrestricted; other delimiters use flanking rules.
 fn delim_run_can_close(
     s: &str,
     suffix: &str,
@@ -2166,6 +2162,9 @@ fn delim_run_can_close(
     ix: usize,
     mode: TableParseMode,
 ) -> bool {
+    if suffix.as_bytes()[0] == b'~' {
+        return true;
+    }
     if ix == 0 {
         return false;
     }
@@ -2186,15 +2185,6 @@ fn delim_run_can_close(
             return true;
         }
     }
-    let delim = suffix.bytes().next().unwrap();
-    // Double tildes can be intraword.
-    if delim == b'~' && run_len > 1 && !is_punctuation(prev_char) {
-        return true;
-    }
-    if delim == b'~' && prev_char == '~' {
-        return true;
-    }
-
     next_char.is_whitespace() || is_punctuation(next_char)
 }
 
