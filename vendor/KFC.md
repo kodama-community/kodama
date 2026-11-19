@@ -10,3 +10,4 @@ This specification amends [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2
 - Code blocks use backtick fences only; tilde fences and indented code blocks are not supported.
 - Thematic breaks use only `-` markers; `*` and `_` markers are not recognized as thematic breaks.
 - Emphasis delimiters no longer have whitespace, punctuation, or word-boundary restrictions. Emphasis cannot nest; mismatched or unclosed delimiters and runs of three or more delimiters are syntax errors.
+- `==…==` is ordinary text, not an inline highlight delimiter.
