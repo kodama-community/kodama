@@ -20,13 +20,10 @@
 
 //! Scanners for fragments of CommonMark syntax
 
-use std::char;
-
 use crate::parse::HtmlScanGuard;
 pub(crate) use crate::puncttable::{is_ascii_punctuation, is_punctuation};
 use crate::strings::CowStr;
-use crate::{entities, BlockQuoteKind, HeadingLevel};
-use crate::{Alignment, LinkType};
+use crate::{Alignment, BlockQuoteKind, HeadingLevel, LinkType};
 
 use memchr::memchr;
 
@@ -837,75 +834,6 @@ fn parse_decimal(bytes: &[u8], limit: usize) -> (usize, usize) {
     }
 }
 
-// returns (number of bytes, parsed hex)
-fn parse_hex(bytes: &[u8], limit: usize) -> (usize, usize) {
-    match bytes
-        .iter()
-        .take(limit)
-        .try_fold((0, 0usize), |(count, acc), c| {
-            let mut c = *c;
-            let digit = if c.is_ascii_digit() {
-                usize::from(c - b'0')
-            } else {
-                // make lower case
-                c |= 0x20;
-                if (b'a'..=b'f').contains(&c) {
-                    usize::from(c - b'a' + 10)
-                } else {
-                    return Err((count, acc));
-                }
-            };
-            match acc
-                .checked_mul(16)
-                .and_then(|sixteen_acc| sixteen_acc.checked_add(digit))
-            {
-                Some(number) => Ok((count + 1, number)),
-                // stop early on overflow
-                None => Err((count, acc)),
-            }
-        }) {
-        Ok(p) | Err(p) => p,
-    }
-}
-
-fn char_from_codepoint(input: usize) -> Option<char> {
-    let codepoint = input.try_into().ok()?;
-    if codepoint == 0 {
-        return None;
-    }
-    char::from_u32(codepoint)
-}
-
-// doesn't bother to check data[0] == '&'
-pub(crate) fn scan_entity(bytes: &[u8]) -> (usize, Option<CowStr<'static>>) {
-    let mut end = 1;
-    if bytes.get(end) == Some(&b'#') {
-        end += 1;
-        let (bytecount, codepoint) = if end < bytes.len() && bytes[end] | 0x20 == b'x' {
-            end += 1;
-            parse_hex(&bytes[end..], 6)
-        } else {
-            parse_decimal(&bytes[end..], 7)
-        };
-        end += bytecount;
-        return if bytecount == 0 || bytes.get(end) != Some(&b';') {
-            (0, None)
-        } else {
-            (
-                end + 1,
-                Some(char_from_codepoint(codepoint).unwrap_or('\u{FFFD}').into()),
-            )
-        };
-    }
-    end += scan_while(&bytes[end..], is_ascii_alphanumeric);
-    if bytes.get(end) == Some(&b';') {
-        if let Some(value) = entities::get_entity(&bytes[1..end]) {
-            return (end + 1, Some(value.into()));
-        }
-    }
-    (0, None)
-}
-
 pub(crate) fn scan_wikilink_pipe(data: &str, start_ix: usize, len: usize) -> Option<(usize, &str)> {
     let bytes = data.as_bytes();
     let end_ix = std::cmp::min(start_ix + len, bytes.len());
@@ -1129,7 +1057,7 @@ fn scan_attribute_value(
     Some(i)
 }
 
-// Remove backslash escapes and resolve entities
+// Remove backslash escapes and carriage returns.
 pub(crate) fn unescape<'a, I: Into<CowStr<'a>>>(input: I, is_in_table: bool) -> CowStr<'a> {
     let input = input.into();
     let mut result = String::new();
@@ -1153,15 +1081,6 @@ pub(crate) fn unescape<'a, I: Into<CowStr<'a>>>(input: I, is_in_table: bool) -> 
                 mark = i + 1;
                 i += 2;
             }
-            [b'&', ..] => match scan_entity(&bytes[i..]) {
-                (n, Some(value)) => {
-                    result.push_str(&input[mark..i]);
-                    result.push_str(&value);
-                    i += n;
-                    mark = i;
-                }
-                _ => i += 1,
-            },
             [b'\r', ..] => {
                 result.push_str(&input[mark..i]);
                 i += 1;

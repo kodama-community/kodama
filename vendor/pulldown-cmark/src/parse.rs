@@ -1208,15 +1208,6 @@ impl<'input, F: BrokenLinkCallback<'input>> Parser<'input, F> {
                     }
                 }
             }
-            if c == b'&' {
-                if let (n, Some(value)) = scan_entity(&bytes[i..]) {
-                    title.push_str(&text[mark..i]);
-                    title.push_str(&value);
-                    i += n;
-                    mark = i;
-                    continue;
-                }
-            }
             if self.tree.is_in_table()
                 && c == b'\\'
                 && i + 2 < bytes.len()

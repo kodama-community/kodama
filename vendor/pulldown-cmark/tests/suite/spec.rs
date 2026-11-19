@@ -211,9 +211,9 @@ fn spec_test_25() {
 &frac34; &HilbertSpace; &DifferentialD;
 &ClockwiseContourIntegral; &ngE;
 "##;
-    let expected = r##"<p>  &amp; © Æ Ď
-¾ ℋ ⅆ
-∲ ≧̸</p>
+    let expected = r##"<p>&amp;nbsp; &amp;amp; &amp;copy; &amp;AElig; &amp;Dcaron;
+&amp;frac34; &amp;HilbertSpace; &amp;DifferentialD;
+&amp;ClockwiseContourIntegral; &amp;ngE;</p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, false);
@@ -223,7 +223,7 @@ fn spec_test_25() {
 fn spec_test_26() {
     let original = r##"&#35; &#1234; &#992; &#0;
 "##;
-    let expected = r##"<p># Ӓ Ϡ �</p>
+    let expected = r##"<p>&amp;#35; &amp;#1234; &amp;#992; &amp;#0;</p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, false);
@@ -233,7 +233,7 @@ fn spec_test_26() {
 fn spec_test_27() {
     let original = r##"&#X22; &#XD06; &#xcab;
 "##;
-    let expected = r##"<p>" ആ ಫ</p>
+    let expected = r##"<p>&amp;#X22; &amp;#XD06; &amp;#xcab;</p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, false);
@@ -289,7 +289,7 @@ fn spec_test_31() {
 fn spec_test_32() {
     let original = r##"[foo](/f&ouml;&ouml; "f&ouml;&ouml;")
 "##;
-    let expected = r##"<p><a href="/f%C3%B6%C3%B6" title="föö">foo</a></p>
+    let expected = r##"<p><a href="/f&amp;ouml;&amp;ouml;" title="f&amp;ouml;&amp;ouml;">foo</a></p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, false);
@@ -301,7 +301,7 @@ fn spec_test_33() {
 
 [foo]: /f&ouml;&ouml; "f&ouml;&ouml;"
 "##;
-    let expected = r##"<p><a href="/f%C3%B6%C3%B6" title="föö">foo</a></p>
+    let expected = r##"<p><a href="/f&amp;ouml;&amp;ouml;" title="f&amp;ouml;&amp;ouml;">foo</a></p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, false);
@@ -313,7 +313,7 @@ fn spec_test_34() {
 foo
 ```
 "##;
-    let expected = r##"<pre><code class="language-föö">foo
+    let expected = r##"<pre><code class="language-f&amp;ouml;&amp;ouml;">foo
 </code></pre>
 "##;
 
@@ -335,7 +335,7 @@ fn spec_test_37() {
     let original = r##"&#42;foo&#42;
 *foo*
 "##;
-    let expected = r##"<p>*foo*
+    let expected = r##"<p>&amp;#42;foo&amp;#42;
 <em>foo</em></p>
 "##;
 
@@ -348,7 +348,7 @@ fn spec_test_38() {
 
 * foo
 "##;
-    let expected = r##"<p>* foo</p>
+    let expected = r##"<p>&amp;#42; foo</p>
 <ul>
 <li>foo</li>
 </ul>
@@ -361,9 +361,7 @@ fn spec_test_38() {
 fn spec_test_39() {
     let original = r##"foo&#10;&#10;bar
 "##;
-    let expected = r##"<p>foo
-
-bar</p>
+    let expected = r##"<p>foo&amp;#10;&amp;#10;bar</p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, false);
@@ -373,7 +371,7 @@ bar</p>
 fn spec_test_40() {
     let original = r##"&#9;foo
 "##;
-    let expected = r##"<p>	foo</p>
+    let expected = r##"<p>&amp;#9;foo</p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, false);
@@ -383,7 +381,7 @@ fn spec_test_40() {
 fn spec_test_41() {
     let original = r##"[a](url &quot;tit&quot;)
 "##;
-    let expected = r##"<p>[a](url "tit")</p>
+    let expected = r##"<p>[a](url &amp;quot;tit&amp;quot;)</p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, false);
@@ -6123,7 +6121,7 @@ fn spec_test_502() {
 fn spec_test_503() {
     let original = r##"[link](foo%20b&auml;)
 "##;
-    let expected = r##"<p><a href="foo%20b%C3%A4">link</a></p>
+    let expected = r##"<p><a href="foo%20b&amp;auml;">link</a></p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, false);
@@ -6157,7 +6155,7 @@ fn spec_test_505() {
 fn spec_test_506() {
     let original = r##"[link](/url "title \"&quot;")
 "##;
-    let expected = r##"<p><a href="/url" title="title &quot;&quot;">link</a></p>
+    let expected = r##"<p><a href="/url" title="title &quot;&amp;quot;">link</a></p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, false);

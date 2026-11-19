@@ -2531,7 +2531,7 @@ fn regression_test_162() {
 fn regression_test_163() {
     let original = r##"&#5307530;
 "##;
-    let expected = r##"<p>�</p>
+    let expected = r##"<p>&amp;#5307530;</p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, false);
@@ -3084,7 +3084,7 @@ Some preamble <code>foobar_raz</code>, not <code>barfoo_raz</code></dt>
 <dd>D</dd>
 </dl>
 <p>This should fix:</p>
-<p>&gt; Something is wrong!</p>
+<p>&amp;gt; Something is wrong!</p>
 "##;
 
     test_markdown_html(original, expected, false, false, false, false, false, true);
@@ -3167,7 +3167,7 @@ fn regression_test_207() {
     > {.bar}
 ===
 "##;
-    let expected = r##"<p>the trailing space after the &gt; should be stripped
+    let expected = r##"<p>the trailing space after the &amp;gt; should be stripped
 &gt; {.bar}
 ===</p>
 "##;

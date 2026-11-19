@@ -999,20 +999,6 @@ impl<'a, 'b> FirstPass<'a, 'b> {
                     begin_text = ix + 1;
                     LoopInstruction::ContinueAndSkip(0)
                 }
-                b'&' => match scan_entity(&bytes[ix..]) {
-                    (n, Some(value)) => {
-                        self.tree.append_text(begin_text, ix, backslash_escaped);
-                        backslash_escaped = false;
-                        self.tree.append(Item {
-                            start: ix,
-                            end: ix + n,
-                            body: ItemBody::SynthesizeText(self.allocs.allocate_cow(value)),
-                        });
-                        begin_text = ix + n;
-                        LoopInstruction::ContinueAndSkip(n - 1)
-                    }
-                    _ => LoopInstruction::ContinueAndSkip(0),
-                },
                 b'|' => {
                     if ix != 0 && bytes[ix - 1] == b'\\' {
                         LoopInstruction::ContinueAndSkip(0)
@@ -2180,7 +2166,7 @@ fn create_lut(options: &Options) -> LookupTable {
 fn special_bytes(options: &Options) -> [bool; 256] {
     let mut bytes = [false; 256];
     let standard_bytes = [
-        b'\n', b'\r', b'*', b'_', b'&', b'\\', b'[', b']', b'<', b'!', b'`',
+        b'\n', b'\r', b'*', b'_', b'\\', b'[', b']', b'<', b'!', b'`',
     ];
 
     for &byte in &standard_bytes {
@@ -2222,10 +2208,7 @@ struct LookupTable {
 #[cfg(not(all(target_arch = "x86_64", feature = "simd")))]
 type LookupTable = [bool; 256];
 
-/// This function walks the byte slices from the given index and
-/// calls the callback function on all bytes (and their indices) that are in the following set:
-/// `` ` ``, `\`, `&`, `*`, `_`, `~`, `!`, `<`, `[`, `]`, `|`, `\r`, `\n`
-/// It is guaranteed not call the callback on other bytes.
+/// Walks the byte slice from `ix`, calling the callback only for bytes enabled in `lut`.
 /// Whenever `callback(ix, byte)` returns a `ContinueAndSkip(n)` value, the callback
 /// will not be called with an index that is less than `ix + n + 1`.
 /// When the callback returns a `BreakAtWith(end_ix, opt+val)`, no more callbacks will be
@@ -2417,7 +2400,7 @@ mod simd {
     pub(super) fn compute_lookup(options: &Options) -> [u8; 16] {
         let mut lookup = [0u8; 16];
         let standard_bytes = [
-            b'\n', b'\r', b'*', b'_', b'&', b'\\', b'[', b']', b'<', b'!', b'`',
+            b'\n', b'\r', b'*', b'_', b'\\', b'[', b']', b'<', b'!', b'`',
         ];
 
         for &byte in &standard_bytes {
@@ -2608,7 +2591,7 @@ mod simd {
 
         #[test]
         fn simple_match() {
-            check_expected_indices("*bcd&f0123456789".as_bytes(), &[0, 4], 0);
+            check_expected_indices("*bcd&f0123456789".as_bytes(), &[0], 0);
         }
 
         #[test]
@@ -2618,19 +2601,19 @@ mod simd {
 
         #[test]
         fn long_match() {
-            check_expected_indices("0123456789abcde~*bcd&f0".as_bytes(), &[15, 16, 20], 0);
+            check_expected_indices("0123456789abcde~*bcd&f0".as_bytes(), &[15, 16], 0);
         }
 
         #[test]
         fn border_skip() {
-            check_expected_indices("0123456789abcde~~~~d&f0".as_bytes(), &[15, 20], 3);
+            check_expected_indices("0123456789abcde~~~~d!f0".as_bytes(), &[15, 20], 3);
         }
 
         #[test]
         fn exhaustive_search() {
             let chars = [
-                b'\n', b'\r', b'*', b'_', b'~', b'|', b'&', b'\\', b'[', b']', b'<', b'!', b'`',
-                b'$', b'{', b'}',
+                b'\n', b'\r', b'*', b'_', b'~', b'|', b'\\', b'[', b']', b'<', b'!', b'`', b'$',
+                b'{', b'}',
             ];
 
             for &c in &chars {

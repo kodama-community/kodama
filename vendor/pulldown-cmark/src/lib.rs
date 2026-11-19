@@ -85,7 +85,6 @@ pub mod html;
 
 pub mod utils;
 
-mod entities;
 mod firstpass;
 mod linklabel;
 mod parse;
