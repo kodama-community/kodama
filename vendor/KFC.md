@@ -1,4 +1,4 @@
-# Kodama Flavored CommonMark
+# (Experimental) Kodama Flavored CommonMark
 
 This specification amends [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/). Unless stated below, the CommonMark specification applies.
 
