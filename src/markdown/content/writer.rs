@@ -414,8 +414,6 @@ where
             Tag::Emphasis => self.write("<em>"),
             Tag::Strong => self.write("<strong>"),
             Tag::Strikethrough => self.write("<del>"),
-            Tag::Superscript => self.write("<sup>"),
-            Tag::Subscript => self.write("<sub>"),
             Tag::Link {
                 link_type: LinkType::Email,
                 dest_url,
@@ -554,12 +552,6 @@ where
             }
             TagEnd::Strikethrough => {
                 self.write("</del>");
-            }
-            TagEnd::Superscript => {
-                self.write("</sup>");
-            }
-            TagEnd::Subscript => {
-                self.write("</sub>");
             }
             TagEnd::Link => {
                 if self.unsafe_link_open {

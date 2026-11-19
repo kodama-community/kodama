@@ -24,21 +24,14 @@ pub enum Escape {
 /// Returns `true` for start tags of inline formatting that is valid inside
 /// link texts and captions.
 pub fn is_formatting_start(tag: &Tag) -> bool {
-    matches!(
-        tag,
-        Tag::Emphasis | Tag::Strong | Tag::Strikethrough | Tag::Superscript | Tag::Subscript
-    )
+    matches!(tag, Tag::Emphasis | Tag::Strong | Tag::Strikethrough)
 }
 
 /// Returns `true` for end tags matching inline formatting.
 pub fn is_formatting_end(tag: &TagEnd) -> bool {
     matches!(
         tag,
-        TagEnd::Emphasis
-            | TagEnd::Strong
-            | TagEnd::Strikethrough
-            | TagEnd::Superscript
-            | TagEnd::Subscript
+        TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough
     )
 }
 

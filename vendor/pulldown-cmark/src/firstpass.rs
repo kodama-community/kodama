@@ -847,33 +847,16 @@ impl<'a, 'b> FirstPass<'a, 'b> {
                     begin_text = ix + count;
                     LoopInstruction::ContinueAndSkip(count - 1)
                 }
-                c @ b'~' | c @ b'^' => {
-                    let string_suffix = &self.text[ix..];
-                    let count = 1 + scan_ch_repeat(&string_suffix.as_bytes()[1..], c);
-                    let can_open = delim_run_can_open(
-                        &self.text[start..],
-                        string_suffix,
-                        count,
-                        ix - start,
-                        mode,
-                    );
-                    let can_close = delim_run_can_close(
-                        &self.text[start..],
-                        string_suffix,
-                        count,
-                        ix - start,
-                        mode,
-                    );
-                    let is_valid_seq = (c != b'~' || count <= 2) || (c == b'~' && count == 2);
-
-                    if (can_open || can_close) && is_valid_seq {
+                b'~' => {
+                    let count = 1 + scan_ch_repeat(&bytes[ix + 1..], b'~');
+                    if count <= 2 {
                         self.tree.append_text(begin_text, ix, backslash_escaped);
                         backslash_escaped = false;
                         for i in 0..count {
                             self.tree.append(Item {
                                 start: ix + i,
                                 end: ix + i + 1,
-                                body: ItemBody::MaybeDecoration(count - i, can_open, can_close),
+                                body: ItemBody::MaybeStrikethrough(count - i),
                             });
                         }
                         begin_text = ix + count;
@@ -2113,8 +2096,7 @@ fn fixup_end_of_definition_list(tree: &mut Tree<Item>, list_ix: TreeIndex) {
     }
 }
 
-/// Determines whether the delimiter run starting at given index is
-/// allowed to open. Tildes are unrestricted; other delimiters use flanking rules.
+/// Determines whether a smart quote can open at the given index.
 /// suffix is &s[ix..], which is passed in as an optimization, since taking
 /// a string subslice is O(n).
 fn delim_run_can_open(
@@ -2125,9 +2107,6 @@ fn delim_run_can_open(
     mode: TableParseMode,
 ) -> bool {
     let delim = suffix.as_bytes()[0];
-    if delim == b'~' {
-        return true;
-    }
     let next_char = if let Some(c) = suffix[run_len..].chars().next() {
         c
     } else {
@@ -2153,8 +2132,7 @@ fn delim_run_can_open(
         || is_punctuation(prev_char) && (delim != b'\'' || ![']', ')'].contains(&prev_char))
 }
 
-/// Determines whether the delimiter run starting at given index is
-/// allowed to close. Tildes are unrestricted; other delimiters use flanking rules.
+/// Determines whether a smart quote can close at the given index.
 fn delim_run_can_close(
     s: &str,
     suffix: &str,
@@ -2162,9 +2140,6 @@ fn delim_run_can_close(
     ix: usize,
     mode: TableParseMode,
 ) -> bool {
-    if suffix.as_bytes()[0] == b'~' {
-        return true;
-    }
     if ix == 0 {
         return false;
     }
@@ -2214,13 +2189,8 @@ fn special_bytes(options: &Options) -> [bool; 256] {
     if options.contains(Options::ENABLE_TABLES) {
         bytes[b'|' as usize] = true;
     }
-    if options.contains(Options::ENABLE_STRIKETHROUGH)
-        || options.contains(Options::ENABLE_SUBSCRIPT)
-    {
+    if options.contains(Options::ENABLE_STRIKETHROUGH) {
         bytes[b'~' as usize] = true;
-    }
-    if options.contains(Options::ENABLE_SUPERSCRIPT) {
-        bytes[b'^' as usize] = true;
     }
     if options.contains(Options::ENABLE_MATH) {
         bytes[b'$' as usize] = true;
@@ -2456,13 +2426,8 @@ mod simd {
         if options.contains(Options::ENABLE_TABLES) {
             add_lookup_byte(&mut lookup, b'|');
         }
-        if options.contains(Options::ENABLE_STRIKETHROUGH)
-            || options.contains(Options::ENABLE_SUBSCRIPT)
-        {
+        if options.contains(Options::ENABLE_STRIKETHROUGH) {
             add_lookup_byte(&mut lookup, b'~');
-        }
-        if options.contains(Options::ENABLE_SUPERSCRIPT) {
-            add_lookup_byte(&mut lookup, b'^');
         }
         if options.contains(Options::ENABLE_MATH) {
             add_lookup_byte(&mut lookup, b'$');
@@ -2623,7 +2588,6 @@ mod simd {
             opts.insert(Options::ENABLE_TABLES);
             opts.insert(Options::ENABLE_FOOTNOTES);
             opts.insert(Options::ENABLE_STRIKETHROUGH);
-            opts.insert(Options::ENABLE_SUPERSCRIPT);
             opts.insert(Options::ENABLE_TASKLISTS);
 
             let lut = create_lut(&opts);
@@ -2665,8 +2629,8 @@ mod simd {
         #[test]
         fn exhaustive_search() {
             let chars = [
-                b'\n', b'\r', b'*', b'_', b'~', b'^', b'|', b'&', b'\\', b'[', b']', b'<', b'!',
-                b'`', b'$', b'{', b'}',
+                b'\n', b'\r', b'*', b'_', b'~', b'|', b'&', b'\\', b'[', b']', b'<', b'!', b'`',
+                b'$', b'{', b'}',
             ];
 
             for &c in &chars {

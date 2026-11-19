@@ -4,25 +4,42 @@
 use pulldown_cmark::{html, BrokenLink, Options, Parser};
 
 #[test]
-fn tilde_allows_surrounding_whitespace() {
-    let options = Options::ENABLE_SUBSCRIPT | Options::ENABLE_STRIKETHROUGH;
+fn scripts_use_math() {
     let mut output = String::new();
     html::push_html(
         &mut output,
-        Parser::new_ext("~ sub ~ ~~ deleted ~~", options),
+        Parser::new_ext("^script^ _emphasis_ $x_i^2$", Options::all()),
     );
-    assert_eq!(output, "<p><sub> sub </sub> <del> deleted </del></p>\n");
+    assert_eq!(
+        output,
+        "<p>^script^ <em>emphasis</em> <span class=\"math math-inline\">x_i^2</span></p>\n"
+    );
+}
+
+#[test]
+fn tilde_allows_surrounding_whitespace() {
+    let mut output = String::new();
+    html::push_html(
+        &mut output,
+        Parser::new_ext(
+            "~ deleted ~ ~~ also deleted ~~",
+            Options::ENABLE_STRIKETHROUGH,
+        ),
+    );
+    assert_eq!(
+        output,
+        "<p><del> deleted </del> <del> also deleted </del></p>\n"
+    );
 }
 
 #[test]
 fn tilde_nesting() {
-    let options = Options::ENABLE_SUBSCRIPT | Options::ENABLE_STRIKETHROUGH;
     let mut output = String::new();
     html::push_html(
         &mut output,
-        Parser::new_ext("~outer ~~inner~~ tail~", options),
+        Parser::new_ext("~outer ~~inner~~ tail~", Options::ENABLE_STRIKETHROUGH),
     );
-    assert_eq!(output, "<p><sub>outer <del>inner</del> tail</sub></p>\n");
+    assert_eq!(output, "<p><del>outer <del>inner</del> tail</del></p>\n");
 }
 
 #[test]

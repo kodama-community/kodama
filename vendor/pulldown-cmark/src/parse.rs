@@ -21,7 +21,7 @@
 //! Tree-based two pass parser.
 
 use core::cell::Cell;
-use std::cmp::{max, min};
+use std::cmp::max;
 use std::collections::{HashMap, VecDeque};
 use std::iter::FusedIterator;
 use std::num::NonZeroUsize;
@@ -54,9 +54,8 @@ pub(crate) struct Item {
 #[derive(Debug, PartialEq, Clone, Default)]
 pub(crate) enum ItemBody {
     // These are possible inline items, need to be resolved in second pass.
-    MaybeEmphasis(usize), // length of an asterisk or underscore run
-    // repeats, can_open, can_close
-    MaybeDecoration(usize, bool, bool),
+    MaybeEmphasis(usize),      // length of an asterisk or underscore run
+    MaybeStrikethrough(usize), // length of a tilde run
     // brace context
     MaybeMath(u8),
     // quote byte, can_open, can_close
@@ -72,8 +71,6 @@ pub(crate) enum ItemBody {
     Emphasis,
     Strong,
     Strikethrough,
-    Superscript,
-    Subscript,
     Math(CowIndex, bool), // true for display math
     Code(CowIndex),
     Link(LinkIndex),
@@ -133,7 +130,7 @@ impl ItemBody {
         matches!(
             *self,
             MaybeEmphasis(..)
-                | MaybeDecoration(..)
+                | MaybeStrikethrough(..)
                 | MaybeMath(..)
                 | MaybeSmartQuote(..)
                 | MaybeCode(..)
@@ -148,7 +145,7 @@ impl ItemBody {
         matches!(
             *self,
             MaybeEmphasis(..)
-                | MaybeDecoration(..)
+                | MaybeStrikethrough(..)
                 | MaybeMath(..)
                 | MaybeSmartQuote(..)
                 | MaybeCode(..)
@@ -222,7 +219,7 @@ pub struct Parser<'input, F = DefaultBrokenLinkCallback> {
     link_ref_expansion_limit: usize,
 
     // used by inline passes. store them here for reuse
-    decoration_stack: DecorationStack,
+    strikethrough_stack: Vec<StrikethroughDelimiter>,
     link_stack: LinkStack,
     wikilink_stack: LinkStack,
     code_delims: CodeDelims,
@@ -281,7 +278,6 @@ impl<'input, F: BrokenLinkCallback<'input>> Parser<'input, F> {
     ) -> Self {
         let (mut tree, allocs) = run_first_pass(text, options);
         tree.reset();
-        let decoration_stack = Default::default();
         let link_stack = Default::default();
         let wikilink_stack = Default::default();
         let html_scan_guard = Default::default();
@@ -291,7 +287,7 @@ impl<'input, F: BrokenLinkCallback<'input>> Parser<'input, F> {
             tree,
             allocs,
             broken_link_callback,
-            decoration_stack,
+            strikethrough_stack: Vec::new(),
             link_stack,
             wikilink_stack,
             html_scan_guard,
@@ -969,125 +965,42 @@ impl<'input, F: BrokenLinkCallback<'input>> Parser<'input, F> {
 
     fn handle_decorations_and_hard_break(&mut self) {
         let mut prev = None;
-        let mut prev_ix: TreeIndex;
         let mut cur = self.tree.cur();
 
         let mut single_quote_open: Option<TreeIndex> = None;
         let mut double_quote_open: bool = false;
 
-        while let Some(mut cur_ix) = cur {
+        while let Some(cur_ix) = cur {
             match self.tree[cur_ix].item.body {
-                ItemBody::MaybeDecoration(mut count, can_open, can_close) => {
-                    let run_length = count;
-                    let c = self.text.as_bytes()[self.tree[cur_ix].item.start];
-                    let both = can_open && can_close;
-                    if can_close {
-                        while let Some(el) =
-                            self.decoration_stack
-                                .find_match(&mut self.tree, c, run_length, both)
-                        {
-                            // have a match!
-                            if let Some(prev_ix) = prev {
-                                self.tree[prev_ix].next = None;
-                            }
-                            let match_count = min(count, el.count);
-                            // start, end are tree node indices
-                            let mut end = cur_ix - 1;
-                            let mut start = el.start + el.count;
-
-                            // work from the inside out
-                            while start > el.start + el.count - match_count {
-                                let inc = if start > el.start + el.count - match_count + 1 {
-                                    2
-                                } else {
-                                    1
-                                };
-                                let ty = if c == b'~' {
-                                    if inc == 2 {
-                                        if self.options.contains(Options::ENABLE_STRIKETHROUGH) {
-                                            ItemBody::Strikethrough
-                                        } else {
-                                            ItemBody::Text {
-                                                backslash_escaped: false,
-                                            }
-                                        }
-                                    } else {
-                                        if self.options.contains(Options::ENABLE_SUBSCRIPT) {
-                                            ItemBody::Subscript
-                                        } else if self
-                                            .options
-                                            .contains(Options::ENABLE_STRIKETHROUGH)
-                                        {
-                                            ItemBody::Strikethrough
-                                        } else {
-                                            ItemBody::Text {
-                                                backslash_escaped: false,
-                                            }
-                                        }
-                                    }
-                                } else if c == b'^' {
-                                    if self.options.contains(Options::ENABLE_SUPERSCRIPT) {
-                                        ItemBody::Superscript
-                                    } else {
-                                        ItemBody::Text {
-                                            backslash_escaped: false,
-                                        }
-                                    }
-                                } else {
-                                    unreachable!("unexpected decoration delimiter");
-                                };
-
-                                let root = start - inc;
-                                end = end + inc;
-                                self.tree[root].item.body = ty;
-                                self.tree[root].item.end = self.tree[end].item.end;
-                                self.tree[root].child = Some(start);
-                                self.tree[root].next = None;
-                                start = root;
-                            }
-
-                            // set next for top most emph level
-                            prev_ix = el.start + el.count - match_count;
-                            prev = Some(prev_ix);
-                            cur = self.tree[cur_ix + match_count - 1].next;
-                            self.tree[prev_ix].next = cur;
-
-                            if el.count > match_count {
-                                self.decoration_stack.push(Decoration {
-                                    start: el.start,
-                                    count: el.count - match_count,
-                                    run_length: el.run_length,
-                                    c: el.c,
-                                    both: el.both,
-                                })
-                            }
-                            count -= match_count;
-                            if count > 0 {
-                                cur_ix = cur.unwrap();
-                            } else {
-                                break;
-                            }
+                ItemBody::MaybeStrikethrough(count) => {
+                    let end = cur_ix + count - 1;
+                    cur = self.tree[end].next;
+                    if let Some(matching_ix) = self
+                        .strikethrough_stack
+                        .iter()
+                        .rposition(|open| open.count == count)
+                    {
+                        let mut matched = self.strikethrough_stack.drain(matching_ix..);
+                        let open = matched.next().unwrap().start;
+                        // Unmatched runs inside the span cannot pair with runs outside it.
+                        for unmatched in matched {
+                            unmatched.make_literal(&mut self.tree);
                         }
-                    }
-                    if count > 0 {
-                        if can_open {
-                            self.decoration_stack.push(Decoration {
-                                start: cur_ix,
-                                run_length,
-                                count,
-                                c,
-                                both,
-                            });
-                        } else {
-                            for i in 0..count {
-                                self.tree[cur_ix + i].item.body = ItemBody::Text {
-                                    backslash_escaped: false,
-                                };
-                            }
+
+                        if let Some(prev_ix) = prev {
+                            self.tree[prev_ix].next = None;
                         }
-                        prev_ix = cur_ix + count - 1;
-                        prev = Some(prev_ix);
-                        cur = self.tree[prev_ix].next;
+                        self.tree[open].item.body = ItemBody::Strikethrough;
+                        self.tree[open].item.end = self.tree[end].item.end;
+                        self.tree[open].child = Some(open + count);
+                        self.tree[open].next = cur;
+                        prev = Some(open);
+                    } else {
+                        self.strikethrough_stack.push(StrikethroughDelimiter {
+                            start: cur_ix,
+                            count,
+                        });
+                        prev = Some(end);
                     }
                 }
                 ItemBody::MaybeSmartQuote(c, can_open, can_close) => {
@@ -1129,7 +1042,9 @@ impl<'input, F: BrokenLinkCallback<'input>> Parser<'input, F> {
                 }
             }
         }
-        self.decoration_stack.pop_all(&mut self.tree);
+        for unmatched in self.strikethrough_stack.drain(..) {
+            unmatched.make_literal(&mut self.tree);
+        }
     }
 
     fn handle_flat_emphasis(&mut self) {
@@ -1631,90 +1546,19 @@ impl Tree<Item> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-struct Decoration {
-    /// offset of tree node
+#[derive(Clone)]
+struct StrikethroughDelimiter {
     start: TreeIndex,
-    /// number of delimiters available for matching
     count: usize,
-    /// length of the run that these delimiters came from
-    run_length: usize,
-    /// b'~' or b'^'
-    c: u8,
-    /// can both open and close
-    both: bool,
 }
 
-#[derive(Debug, Clone, Default)]
-struct DecorationStack {
-    stack: Vec<Decoration>,
-    lower_bound: usize,
-}
-
-impl DecorationStack {
-    fn pop_all(&mut self, tree: &mut Tree<Item>) {
-        for el in self.stack.drain(..) {
-            for i in 0..el.count {
-                tree[el.start + i].item.body = ItemBody::Text {
-                    backslash_escaped: false,
-                };
-            }
+impl StrikethroughDelimiter {
+    fn make_literal(self, tree: &mut Tree<Item>) {
+        for i in 0..self.count {
+            tree[self.start + i].item.body = ItemBody::Text {
+                backslash_escaped: false,
+            };
         }
-        self.lower_bound = 0;
-    }
-
-    fn truncate(&mut self, new_bound: usize) {
-        self.stack.truncate(new_bound);
-        self.lower_bound = self.lower_bound.min(new_bound);
-    }
-
-    fn find_match(
-        &mut self,
-        tree: &mut Tree<Item>,
-        c: u8,
-        run_length: usize,
-        both: bool,
-    ) -> Option<Decoration> {
-        let lowerbound = min(self.stack.len(), self.lower_bound);
-        let res = self.stack[lowerbound..]
-            .iter()
-            .cloned()
-            .enumerate()
-            .rfind(|(_, el)| {
-                if c == b'~' && run_length != el.run_length {
-                    return false;
-                }
-                el.c == c
-                    && (!both && !el.both
-                        || (run_length + el.run_length) % 3 != 0
-                        || run_length % 3 == 0)
-            });
-
-        if let Some((matching_ix, matching_el)) = res {
-            let matching_ix = matching_ix + lowerbound;
-            for el in &self.stack[(matching_ix + 1)..] {
-                for i in 0..el.count {
-                    tree[el.start + i].item.body = ItemBody::Text {
-                        backslash_escaped: false,
-                    };
-                }
-            }
-            self.truncate(matching_ix);
-            Some(matching_el)
-        } else {
-            // A failed tilde match can leave an opener of the other run length.
-            if c != b'~' {
-                self.lower_bound = self.stack.len();
-            }
-            None
-        }
-    }
-
-    fn push(&mut self, el: Decoration) {
-        if el.c == b'~' {
-            self.lower_bound = self.lower_bound.min(self.stack.len());
-        }
-        self.stack.push(el)
     }
 }
 
@@ -2257,8 +2101,6 @@ fn body_to_tag_end(body: &ItemBody) -> TagEnd {
     match *body {
         ItemBody::Paragraph => TagEnd::Paragraph,
         ItemBody::Emphasis => TagEnd::Emphasis,
-        ItemBody::Superscript => TagEnd::Superscript,
-        ItemBody::Subscript => TagEnd::Subscript,
         ItemBody::Strong => TagEnd::Strong,
         ItemBody::Strikethrough => TagEnd::Strikethrough,
         ItemBody::Link(..) => TagEnd::Link,
@@ -2304,8 +2146,6 @@ fn item_to_event<'a>(item: &Item, text: &'a str, allocs: &mut Allocations<'a>) -
         ItemBody::Rule => return Event::Rule,
         ItemBody::Paragraph => Tag::Paragraph,
         ItemBody::Emphasis => Tag::Emphasis,
-        ItemBody::Superscript => Tag::Superscript,
-        ItemBody::Subscript => Tag::Subscript,
         ItemBody::Strong => Tag::Strong,
         ItemBody::Strikethrough => Tag::Strikethrough,
         ItemBody::Link(link_ix) => {
@@ -2437,8 +2277,6 @@ mod test {
         opts.insert(Options::ENABLE_TABLES);
         opts.insert(Options::ENABLE_FOOTNOTES);
         opts.insert(Options::ENABLE_STRIKETHROUGH);
-        opts.insert(Options::ENABLE_SUPERSCRIPT);
-        opts.insert(Options::ENABLE_SUBSCRIPT);
         opts.insert(Options::ENABLE_TASKLISTS);
 
         Parser::new_ext(text, opts)

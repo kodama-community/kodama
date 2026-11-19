@@ -41,7 +41,7 @@ fn generate_tests_from_spec() {
         .expect("Could not find the 'specs' directory")
         .filter_map(Result::ok)
         .map(|d| d.path())
-        .filter(|p| p.extension().map(|e| e.to_owned()).is_some())
+        .filter(|p| p.extension().is_some() && p.file_stem().unwrap() != "super_sub")
         .chain(hardcoded_iter)
         .collect::<Vec<_>>();
     // Sort by spec names
@@ -86,7 +86,7 @@ fn {}_test_{i}() {{
     let original = r##"{original}"##;
     let expected = r##"{expected}"##;
 
-    test_markdown_html(original, expected, {smart_punct}, {metadata_blocks}, {old_footnotes}, {subscript}, {wikilinks}, {deflists});
+    test_markdown_html(original, expected, {smart_punct}, {metadata_blocks}, {old_footnotes}, false, {wikilinks}, {deflists});
 }}
 "###,
                     spec_name,
@@ -96,7 +96,6 @@ fn {}_test_{i}() {{
                     smart_punct = testcase.smart_punct,
                     metadata_blocks = testcase.metadata_blocks,
                     old_footnotes = testcase.old_footnotes,
-                    subscript = testcase.subscript,
                     wikilinks = testcase.wikilinks,
                     deflists = testcase.deflists,
                 ))
@@ -154,7 +153,6 @@ pub struct TestCase {
     pub smart_punct: bool,
     pub metadata_blocks: bool,
     pub old_footnotes: bool,
-    pub subscript: bool,
     pub wikilinks: bool,
     pub deflists: bool,
 }
@@ -167,19 +165,17 @@ impl<'a> Iterator for Spec<'a> {
         let spec = self.spec;
         let prefix = "```````````````````````````````` example";
 
-        let (i_start, smart_punct, metadata_blocks, old_footnotes, subscript, wikilinks, deflists) =
+        let (i_start, smart_punct, metadata_blocks, old_footnotes, wikilinks, deflists) =
             self.spec.find(prefix).and_then(|pos| {
                 let smartpunct_suffix = "_smartpunct\n";
                 let metadata_blocks_suffix = "_metadata_blocks\n";
                 let old_footnotes_suffix = "_old_footnotes\n";
-                let super_sub_suffix = "_super_sub\n";
                 let wikilinks_suffix = "_wikilinks\n";
                 let deflists_suffix = "_deflists\n";
                 if spec[(pos + prefix.len())..].starts_with(smartpunct_suffix) {
                     Some((
                         pos + prefix.len() + smartpunct_suffix.len(),
                         true,
-                        false,
                         false,
                         false,
                         false,
@@ -193,7 +189,6 @@ impl<'a> Iterator for Spec<'a> {
                         false,
                         false,
                         false,
-                        false,
                     ))
                 } else if spec[(pos + prefix.len())..].starts_with(old_footnotes_suffix) {
                     Some((
@@ -203,22 +198,10 @@ impl<'a> Iterator for Spec<'a> {
                         true,
                         false,
                         false,
-                        false,
-                    ))
-                } else if spec[(pos + prefix.len())..].starts_with(super_sub_suffix) {
-                    Some((
-                        pos + prefix.len() + super_sub_suffix.len(),
-                        false,
-                        false,
-                        false,
-                        true,
-                        false,
-                        false,
                     ))
                 } else if spec[(pos + prefix.len())..].starts_with(wikilinks_suffix) {
                     Some((
                         pos + prefix.len() + wikilinks_suffix.len(),
-                        false,
                         false,
                         false,
                         false,
@@ -232,19 +215,10 @@ impl<'a> Iterator for Spec<'a> {
                         false,
                         false,
                         false,
-                        false,
                         true,
                     ))
                 } else if spec[(pos + prefix.len())..].starts_with('\n') {
-                    Some((
-                        pos + prefix.len() + 1,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                    ))
+                    Some((pos + prefix.len() + 1, false, false, false, false, false))
                 } else {
                     None
                 }
@@ -266,7 +240,6 @@ impl<'a> Iterator for Spec<'a> {
             smart_punct,
             metadata_blocks,
             old_footnotes,
-            subscript,
             wikilinks,
             deflists,
         };
